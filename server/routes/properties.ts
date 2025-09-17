@@ -23,12 +23,29 @@ router.get('/', requireAuth, async (_req, res) => {
     include: {
       floors: {
         include: {
-          units: true,
+          units: {
+            include: {
+              tenants: {
+                where: { status: 'active' },
+                orderBy: { moveInDate: 'desc' },
+                take: 1,
+              },
+            },
+          },
         },
       },
     },
     orderBy: { id: 'desc' },
   });
+  // Attach the current tenant (if any) as 'tenant' field for each unit
+  for (const property of properties) {
+    for (const floor of property.floors) {
+      for (const unit of floor.units) {
+        unit.tenant = unit.tenants && unit.tenants.length > 0 ? unit.tenants[0] : null;
+        delete unit.tenants;
+      }
+    }
+  }
   res.json({ properties });
 });
 

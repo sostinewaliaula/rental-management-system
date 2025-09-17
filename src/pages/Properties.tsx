@@ -144,6 +144,7 @@ export const Properties = () => {
               number: u.number,
               status: u.status,
               rent: u.rent ?? 0,
+              tenant: u.tenant || null,
             })),
           })),
         }));
@@ -729,7 +730,7 @@ export const Properties = () => {
                   <div><span className="font-semibold">Email:</span> {drillUnit.tenant.email}</div>
                   <div><span className="font-semibold">Move In:</span> {drillUnit.tenant.moveInDate}</div>
                   <div><span className="font-semibold">Lease End:</span> {drillUnit.tenant.leaseEnd}</div>
-                  <div><span className="font-semibold">Rent:</span> KES {drillUnit.tenant.rent.toLocaleString()}</div>
+                  <div><span className="font-semibold">Rent:</span> KES {drillUnit.tenant.rent != null ? drillUnit.tenant.rent.toLocaleString() : '-'}</div>
                 </div>
               ) : (
                 <div className="mt-2 text-sm text-gray-500 flex items-center gap-2"><InfoIcon size={13} /> No tenant assigned (Vacant)</div>
