@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import authRouter from './routes/auth';
 import usersRouter from './routes/users';
 import propertiesRouter from './routes/properties';
+import tenantsRouter from './routes/tenants';
 
 dotenv.config();
 dotenv.config({ path: '.env.local' });
@@ -29,6 +30,7 @@ app.get('/health', async (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/properties', propertiesRouter);
+app.use('/api/tenants', tenantsRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

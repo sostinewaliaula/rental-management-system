@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, User2Icon, HomeIcon, CalendarIcon, MailIcon, PhoneIcon, CheckCircle2Icon, AlertCircleIcon, ArrowLeftIcon, XIcon } from 'lucide-react';
 import { Listbox } from '@headlessui/react';
+import { useAuth } from '../auth/AuthContext';
 
 // Modal component (copied/adapted from Properties)
 interface ModalProps {
@@ -162,6 +163,7 @@ const mockProperties = [
 ];
 
 export const Tenants = () => {
+  const { token } = useAuth();
   // State
   const [tenants, setTenants] = useState<Tenant[]>(initialTenants);
   const [searchTerm, setSearchTerm] = useState('');
@@ -178,19 +180,34 @@ export const Tenants = () => {
   const [deleteTenant, setDeleteTenant] = useState<Tenant | null>(null);
   const [formError, setFormError] = useState('');
 
-  // Properties state (for demo, local copy)
-  const [properties, setProperties] = useState(mockProperties);
+  // Properties/units from API
+  const [properties, setProperties] = useState<any[]>([]);
   // For Add/Edit Tenant: selected unitId
   const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
+
+  // Fetch properties on mount
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load properties');
+        const mapped = (data.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
+        if (active) setProperties(mapped);
+      } catch (e: any) {
+        // Optionally handle error
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
   // Helper: get all vacant units grouped by property/floor
   const vacantUnits = useMemo(() => {
     const result: Array<{ property: any; floor: any; unit: any }> = [];
     for (const property of properties) {
       for (const floor of property.floors) {
         for (const unit of floor.units) {
-          if (unit.status === 'vacant') {
-            result.push({ property, floor, unit });
-          }
+          if (unit.status === 'vacant') result.push({ property, floor, unit });
         }
       }
     }
@@ -361,38 +378,55 @@ export const Tenants = () => {
     setFormTenant(prev => ({ ...prev, [field]: value }));
   };
   // Add handler: assign tenant to unit, mark unit as occupied
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTenant.name || !formTenant.phone || !formTenant.email || !formTenant.moveInDate || !formTenant.leaseEnd || !selectedUnit) {
       setFormError('Please fill all required fields and select a unit.');
       return;
     }
-    // Add tenant
-    const newTenant: Tenant = {
-      id: Date.now(),
-      ...formTenant,
-      property: `${selectedUnit.property.name} ${selectedUnit.unit.number}`,
-      rent: selectedUnit.unit.rent,
-    };
-    setTenants(prev => [newTenant, ...prev]);
-    // Mark unit as occupied and assign tenant
-    setProperties(prevProps => prevProps.map(p =>
-      p.id === selectedUnit.property.id ? {
-        ...p,
-        floors: p.floors.map(f =>
-          f.id === selectedUnit.floor.id ? {
-            ...f,
-            units: f.units.map(u =>
-              u.id === selectedUnit.unit.id ? { ...u, status: 'occupied', tenant: newTenant } : u
-            ),
-          } : f
-        ),
-      } : p
-    ));
-    setAddModalOpen(false);
-    setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
-    setSelectedUnitId(null);
-    setFormError('');
+    try {
+      const res = await fetch('/api/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: formTenant.name,
+          email: formTenant.email,
+          phone: formTenant.phone,
+          moveInDate: formTenant.moveInDate,
+          leaseEnd: formTenant.leaseEnd,
+          unitId: selectedUnit.unit.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to add tenant');
+      // Append to list for display
+      setTenants(prev => [
+        {
+          id: data.tenant.id,
+          name: data.tenant.name,
+          email: data.tenant.email,
+          phone: data.tenant.phone,
+          moveInDate: data.tenant.moveInDate?.slice(0,10),
+          leaseEnd: data.tenant.leaseEnd?.slice(0,10),
+          property: `${data.tenant.unit.floor.property.name} ${data.tenant.unit.number}`,
+          rent: data.tenant.unit.rent || 0,
+          status: 'active',
+        },
+        ...prev,
+      ]);
+      // Refresh properties (to update unit status)
+      const ref = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } });
+      const refData = await ref.json();
+      const mapped = (refData.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
+      setProperties(mapped);
+      setAddModalOpen(false);
+      setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
+      setSelectedUnitId(null);
+      setFormError('');
+      alert(`Tenant created. Login details:\nEmail: ${data.credentials.email}\nPassword: ${data.credentials.password}`);
+    } catch (err: any) {
+      setFormError(err.message);
+    }
   };
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
