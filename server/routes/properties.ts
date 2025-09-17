@@ -63,6 +63,24 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+router.delete('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Invalid id' });
+  try {
+    // Delete children first due to FK constraints
+    const floors = await prisma.floor.findMany({ where: { propertyId: id }, select: { id: true } });
+    const floorIds = floors.map(f => f.id);
+    if (floorIds.length > 0) {
+      await prisma.unit.deleteMany({ where: { floorId: { in: floorIds } } });
+      await prisma.floor.deleteMany({ where: { id: { in: floorIds } } });
+    }
+    await prisma.property.delete({ where: { id } });
+    res.status(204).end();
+  } catch (e: any) {
+    res.status(400).json({ message: 'Could not delete property' });
+  }
+});
+
 export default router;
 
 

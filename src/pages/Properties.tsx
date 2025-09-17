@@ -225,6 +225,21 @@ export const Properties = () => {
     setDeleteId(id);
   };
 
+  const performDelete = async () => {
+    if (!deleteId) return;
+    try {
+      const res = await fetch(`/api/properties/${deleteId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok && res.status !== 204) {
+        const msg = await res.text();
+        throw new Error(msg || 'Failed to delete');
+      }
+      setProperties(props => props.filter(p => p.id !== deleteId));
+      setDeleteId(null);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
   // Table columns definition for TanStack Table
   const columns = useMemo<ColumnDef<Property>[]>(() => [
     {
@@ -470,10 +485,10 @@ export const Properties = () => {
     }
     try {
       const payload = {
-        name: newProperty.name,
-        location: newProperty.location,
-        type: newProperty.type,
-        image: newProperty.image,
+      name: newProperty.name,
+      location: newProperty.location,
+      type: newProperty.type,
+      image: newProperty.image,
         floors: newFloors.map((floor, idx) => ({
           name: floor.name,
           units: (newUnits[idx] || []).map(u => ({ number: u.number, type: u.type, rent: Number(u.rent) || 0, status: 'vacant' })),
@@ -615,7 +630,7 @@ export const Properties = () => {
               <div className="mb-4">Are you sure you want to delete this property? This action cannot be undone.</div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">Cancel</button>
-                <button onClick={confirmDelete} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Delete</button>
+                <button onClick={performDelete} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Delete</button>
               </div>
             </>
           );
