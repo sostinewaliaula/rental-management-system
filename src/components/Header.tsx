@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { MenuIcon, BellIcon, UserIcon, CheckCircle2Icon, AlertCircleIcon, HomeIcon, UsersIcon, BanknoteIcon, WrenchIcon, XIcon } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 
 const mockNotifications = [
   { id: 1, type: 'payment', title: 'Payment Received', message: 'KES 45,000 rent from John Mwangi', time: '2m ago', read: false, icon: <BanknoteIcon size={18} className="text-green-500" /> },
@@ -16,6 +17,7 @@ export const Header = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bellButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+  const { user } = useAuth();
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -58,7 +60,7 @@ export const Header = () => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-green-50 to-white border-b border-gray-200 p-4 shadow-sm transition-all" style={{ position: 'relative', zIndex: 10 }}>
+    <header className="bg-gradient-to-r from-green-50 to-white border-b border-gray-200 p-4 shadow-sm transition-all sticky top-0" style={{ position: 'sticky', zIndex: 40, top: 0 }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center md:hidden">
           <button className="text-gray-500 hover:text-green-700 focus:outline-none transition-colors">
@@ -121,8 +123,8 @@ export const Header = () => {
               <UserIcon size={18} className="text-green-700" />
             </div>
             <div className="ml-2 hidden md:block">
-              <p className="text-sm font-semibold text-gray-700">Dinah Gaceri</p>
-              <p className="text-xs text-gray-500">Administrator</p>
+              <p className="text-sm font-semibold text-gray-700">{user?.name || 'User'}</p>
+              <p className="text-xs text-gray-500">{user?.email || ''}{user?.role ? ` • ${user.role}` : ''}</p>
             </div>
           </div>
         </div>

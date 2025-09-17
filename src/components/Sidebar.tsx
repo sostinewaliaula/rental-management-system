@@ -1,8 +1,11 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { HomeIcon, BuildingIcon, UsersIcon, BanknoteIcon, WrenchIcon, LogOutIcon, Settings2Icon, GemIcon, BarChart2Icon, BellIcon } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 
 export const Sidebar = () => {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const navItems = [
     {
     id: 'dashboard',
@@ -86,7 +89,7 @@ export const Sidebar = () => {
         </ul>
       </nav>
       <div className="p-4 border-t border-gray-200 mt-4">
-        <button className="flex items-center px-4 py-2 text-gray-600 hover:bg-green-50 hover:text-green-700 w-full text-left rounded-lg transition-all">
+        <button onClick={() => { logout(); navigate('/login'); }} className="flex items-center px-4 py-2 text-gray-600 hover:bg-green-50 hover:text-green-700 w-full text-left rounded-lg transition-all">
           <LogOutIcon size={20} className="mr-3" />
           Logout
         </button>

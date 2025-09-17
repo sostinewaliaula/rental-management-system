@@ -1,0 +1,39 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
+import { PrismaClient } from '@prisma/client';
+import authRouter from './routes/auth';
+import usersRouter from './routes/users';
+import propertiesRouter from './routes/properties';
+
+dotenv.config();
+dotenv.config({ path: '.env.local' });
+
+const app = express();
+const prisma = new PrismaClient();
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+app.use(cookieParser());
+
+app.get('/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'db' });
+  }
+});
+
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/properties', propertiesRouter);
+
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Server listening on http://localhost:${PORT}`);
+});
+
+

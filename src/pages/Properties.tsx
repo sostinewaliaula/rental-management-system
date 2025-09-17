@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, HomeIcon, BuildingIcon, WrenchIcon, CheckCircle2Icon, LayersIcon, DoorOpenIcon, User2Icon, ArrowLeftIcon, InfoIcon, BedIcon, SquareIcon, XIcon } from 'lucide-react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { Listbox } from '@headlessui/react';
+import { useAuth } from '../auth/AuthContext';
 
 // Simple Modal component
 interface ModalProps {
@@ -81,90 +82,12 @@ type Property = {
 type ModalType = 'view' | 'edit' | null;
 
 export const Properties = () => {
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
-  const [properties, setProperties] = useState<Property[]>([
-    {
-    id: 1,
-    name: 'Westlands Apartment',
-    image: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80',
-    location: 'Westlands, Nairobi',
-    type: 'Apartment',
-      floors: [
-        {
-          id: 1,
-          name: 'Ground Floor',
-          units: [
-            {
-              id: 1,
-              type: 'one bedroom',
-              number: 'G1',
-              status: 'occupied',
-              rent: 0,
-              tenant: {
-                id: 1,
-                name: 'John Mwangi',
-                phone: '+254 712 345 678',
-                email: 'john.mwangi@example.com',
-                moveInDate: '2023-01-15',
-                leaseEnd: '2024-01-14',
-    rent: 45000,
-              },
-            },
-            {
-              id: 2,
-              type: 'studio',
-              number: 'G2',
-              status: 'vacant',
-              rent: 0,
-            },
-          ],
-        },
-        {
-          id: 2,
-          name: 'First Floor',
-          units: [
-            {
-              id: 3,
-              type: 'two bedroom',
-              number: '1A',
-              status: 'maintenance',
-              rent: 0,
-            },
-            {
-              id: 4,
-              type: 'bedsitter',
-              number: '1B',
-              status: 'vacant',
-              rent: 0,
-            },
-          ],
-        },
-      ],
-    },
-    {
-    id: 2,
-    name: 'Kilimani Townhouse',
-    image: 'https://images.unsplash.com/photo-1598228723793-52759bba239c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2074&q=80',
-    location: 'Kilimani, Nairobi',
-    type: 'Townhouse',
-      floors: [
-        {
-          id: 1,
-          name: 'Ground Floor',
-          units: [
-            {
-              id: 1,
-              type: 'three bedroom',
-              number: 'G1',
-              status: 'vacant',
-              rent: 0,
-            },
-          ],
-        },
-      ],
-    },
-  ]);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Property | null>(null);
   const [modalType, setModalType] = useState<ModalType>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -180,7 +103,7 @@ export const Properties = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newProperty, setNewProperty] = useState<any>({
     name: '',
-    location: '',
+    location: 'Nairobi',
     type: '',
     image: '',
     floors: [],
@@ -195,6 +118,44 @@ export const Properties = () => {
   const [editFloors, setEditFloors] = useState<any[]>([]);
   const [editUnits, setEditUnits] = useState<{ [floorIdx: number]: any[] }>({});
   const [editError, setEditError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+        const contentType = res.headers.get('content-type') || '';
+        const data = contentType.includes('application/json') ? await res.json() : { message: await res.text() };
+        if (!res.ok) throw new Error(data?.message || 'Failed to load properties');
+        // Map DB units to UI-friendly shape; tenant details are not yet linked in DB
+        const mapped: Property[] = (data.properties || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          image: p.image || '',
+          location: p.location,
+          type: p.type,
+          floors: (p.floors || []).map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            units: (f.units || []).map((u: any) => ({
+              id: u.id,
+              type: u.type,
+              number: u.number,
+              status: u.status,
+              rent: u.rent ?? 0,
+            })),
+          })),
+        }));
+        if (active) setProperties(mapped);
+      } catch (e: any) {
+        if (active) setError(e.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
 
   // Unique property types for filter dropdown
   const propertyTypes = useMemo(() => {
@@ -468,7 +429,10 @@ export const Properties = () => {
   };
   // Remove handleAddPropertyDetails, all validation is in handleAddSubmit
   const handleAddFloor = () => {
-    setNewFloors([...newFloors, { name: '', units: [] }]);
+    setNewFloors([
+      ...newFloors,
+      { name: newFloors.length === 0 ? 'Ground Floor' : newFloors.length === 1 ? 'First Floor' : `Floor ${newFloors.length}`, units: [] },
+    ]);
   };
   const handleRemoveFloor = (idx: number) => {
     setNewFloors(newFloors.filter((_, i) => i !== idx));
@@ -498,34 +462,49 @@ export const Properties = () => {
     updated[unitIdx][field] = value;
     setNewUnits({ ...newUnits, [floorIdx]: updated });
   };
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProperty.name || !newProperty.location || !newProperty.type || newFloors.length === 0) {
       setAddError('Please fill all required fields and add at least one floor.');
       return;
     }
-    // Build floors/units structure
-    const floors: Floor[] = newFloors.map((floor, idx) => ({
-      id: Date.now() + idx,
-      name: floor.name,
-      units: (newUnits[idx] || []).map((unit, uidx) => ({
-        id: Date.now() + idx * 100 + uidx,
-        type: unit.type,
-        number: unit.number,
-        rent: Number(unit.rent) || 0,
-        status: 'vacant', // always vacant by default
-      })),
-    }));
-    const property: Property = {
-      id: Date.now(),
-      name: newProperty.name,
-      location: newProperty.location,
-      type: newProperty.type,
-      image: newProperty.image,
-      floors,
-    };
-    setProperties([property, ...properties]);
-    resetAddModal();
+    try {
+      const payload = {
+        name: newProperty.name,
+        location: newProperty.location,
+        type: newProperty.type,
+        image: newProperty.image,
+        floors: newFloors.map((floor, idx) => ({
+          name: floor.name,
+          units: (newUnits[idx] || []).map(u => ({ number: u.number, type: u.type, rent: Number(u.rent) || 0, status: 'vacant' })),
+        })),
+      };
+      const res = await fetch('/api/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to create property');
+      setAddModalOpen(false);
+      setNewProperty({ name: '', location: 'Nairobi', type: '', image: '', floors: [] });
+      setNewFloors([]);
+      setNewUnits({});
+      setAddError('');
+      const refRes = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+      const refData = await refRes.json();
+      const mapped: Property[] = (refData.properties || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        image: p.image || '',
+        location: p.location,
+        type: p.type,
+        floors: (p.floors || []).map((f: any) => ({ id: f.id, name: f.name, units: (f.units || []).map((u: any) => ({ id: u.id, type: u.type, number: u.number, status: u.status, rent: u.rent ?? 0 })) })),
+      }));
+      setProperties(mapped);
+    } catch (err: any) {
+      setAddError(err.message);
+    }
   };
 
   // Edit property modal handlers
@@ -606,6 +585,8 @@ export const Properties = () => {
 
   return (
     <div>
+      {loading && <div className="mb-4 text-gray-500">Loading properties...</div>}
+      {error && <div className="mb-4 text-red-600">{error}</div>}
       {/* Modals */}
       <Modal open={modalType === 'view'} onClose={() => setModalType(null)} title="Property Details">
         {selected && (
@@ -938,7 +919,14 @@ export const Properties = () => {
             <SearchIcon size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input type="text" placeholder="Search properties..." className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} />
           </div>
-          <button className="bg-green-700 hover:bg-green-800 text-white py-2 px-4 rounded-lg flex items-center shadow self-start md:self-auto" onClick={() => setAddModalOpen(true)}>
+          <button className="bg-green-700 hover:bg-green-800 text-white py-2 px-4 rounded-lg flex items-center shadow self-start md:self-auto" onClick={() => {
+            setAddModalOpen(true);
+            if (newFloors.length === 0) {
+              setNewFloors([{ name: 'Ground Floor', units: [] }]);
+              setNewUnits({ 0: [{ type: 'one bedroom', number: 'G1', rent: 45000 }] });
+            }
+            if (!newProperty.location) setNewProperty({ ...newProperty, location: 'Nairobi' });
+          }}>
             <PlusIcon size={18} className="mr-2" />
             Add Property
           </button>
