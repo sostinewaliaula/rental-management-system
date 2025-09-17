@@ -63,6 +63,47 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+router.put('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, location, type, image, floors } = req.body as {
+    name?: string; location?: string; type?: string; image?: string; floors?: Array<{ name: string; units: Array<{ number: string; type: string; status?: string; rent?: number }> }>;
+  };
+  if (!id) return res.status(400).json({ message: 'Invalid id' });
+  if (!name || !location || !type || !floors || floors.length === 0) {
+    return res.status(400).json({ message: 'Missing required fields: name, location, type, floors' });
+  }
+  try {
+    // Replace floors/units for simplicity
+    const existingFloors = await prisma.floor.findMany({ where: { propertyId: id }, select: { id: true } });
+    const existingFloorIds = existingFloors.map(f => f.id);
+    if (existingFloorIds.length > 0) {
+      await prisma.unit.deleteMany({ where: { floorId: { in: existingFloorIds } } });
+      await prisma.floor.deleteMany({ where: { id: { in: existingFloorIds } } });
+    }
+    const updated = await prisma.property.update({
+      where: { id },
+      data: {
+        name,
+        location,
+        type,
+        image,
+        floors: {
+          create: floors.map(f => ({
+            name: f.name,
+            units: {
+              create: (f.units || []).map(u => ({ number: u.number, type: u.type, status: u.status || 'vacant', rent: u.rent ?? 0 })),
+            },
+          })),
+        },
+      },
+      include: { floors: { include: { units: true } } },
+    });
+    res.json({ property: updated });
+  } catch (e: any) {
+    res.status(400).json({ message: 'Could not update property' });
+  }
+});
+
 router.delete('/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ message: 'Invalid id' });

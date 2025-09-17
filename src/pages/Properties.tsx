@@ -569,24 +569,42 @@ export const Properties = () => {
       setEditError('Please fill all required fields and add at least one floor.');
       return;
     }
-    // Build floors/units structure
-    const floors: Floor[] = editFloors.map((floor, idx) => ({
-      id: Date.now() + idx,
-      name: floor.name,
-      units: (editUnits[idx] || []).map((unit, uidx) => ({
-        id: Date.now() + idx * 100 + uidx,
-        type: unit.type,
-        number: unit.number,
-        rent: Number(unit.rent) || 0,
-        status: 'vacant', // always vacant by default
-      })),
-    }));
-    const updatedProperty: Property = {
-      ...editProperty,
-      floors,
-    };
-    setProperties(props => props.map((p, i) => (i === editPropertyIdx ? updatedProperty : p)));
-    resetEditModal();
+    (async () => {
+      try {
+        const payload = {
+          name: editProperty.name,
+          location: editProperty.location,
+          type: editProperty.type,
+          image: editProperty.image,
+          floors: editFloors.map((floor, idx) => ({
+            name: floor.name,
+            units: (editUnits[idx] || []).map((u: any) => ({ number: u.number, type: u.type, rent: Number(u.rent) || 0, status: 'vacant' })),
+          })),
+        };
+        const res = await fetch(`/api/properties/${editProperty.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to update property');
+        // Refresh list
+        const refRes = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+        const refData = await refRes.json();
+        const mapped: Property[] = (refData.properties || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          image: p.image || '',
+          location: p.location,
+          type: p.type,
+          floors: (p.floors || []).map((f: any) => ({ id: f.id, name: f.name, units: (f.units || []).map((u: any) => ({ id: u.id, type: u.type, number: u.number, status: u.status, rent: u.rent ?? 0 })) })),
+        }));
+        setProperties(mapped);
+        resetEditModal();
+      } catch (err: any) {
+        setEditError(err.message);
+      }
+    })();
   };
 
   const unitTypeOptions = [
