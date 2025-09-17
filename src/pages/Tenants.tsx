@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
-import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, User2Icon, HomeIcon, CalendarIcon, MailIcon, PhoneIcon, CheckCircle2Icon, AlertCircleIcon, ArrowLeftIcon, XIcon } from 'lucide-react';
+import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, User2Icon, HomeIcon, CalendarIcon, MailIcon, PhoneIcon, CheckCircle2Icon, AlertCircleIcon, ArrowLeftIcon, XIcon, KeyIcon } from 'lucide-react';
 import { Listbox } from '@headlessui/react';
 import { useAuth } from '../auth/AuthContext';
 
@@ -179,6 +179,7 @@ export const Tenants = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [deleteTenant, setDeleteTenant] = useState<Tenant | null>(null);
   const [formError, setFormError] = useState('');
+  const [showCredentials, setShowCredentials] = useState<{email: string, password: string} | null>(null);
 
   // Properties/units from API
   const [properties, setProperties] = useState<any[]>([]);
@@ -399,7 +400,6 @@ export const Tenants = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Failed to add tenant');
-      // Append to list for display
       setTenants(prev => [
         {
           id: data.tenant.id,
@@ -423,7 +423,7 @@ export const Tenants = () => {
       setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
       setSelectedUnitId(null);
       setFormError('');
-      alert(`Tenant created. Login details:\nEmail: ${data.credentials.email}\nPassword: ${data.credentials.password}`);
+      setShowCredentials({ email: data.credentials.email, password: data.credentials.password });
     } catch (err: any) {
       setFormError(err.message);
     }
@@ -462,6 +462,21 @@ export const Tenants = () => {
   const activeCount = tenants.filter(t => t.status === 'active').length;
   const lateCount = tenants.filter(t => t.status === 'late').length;
   const endingCount = tenants.filter(t => t.status === 'ending').length;
+
+  // Download credentials as text file
+  const handleDownloadCredentials = () => {
+    if (!showCredentials) return;
+    const text = `Tenant Login Details\nEmail: ${showCredentials.email}\nPassword: ${showCredentials.password}`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tenant-login-details.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
@@ -730,6 +745,18 @@ export const Tenants = () => {
         <div className="flex justify-end gap-2">
           <button onClick={() => setDeleteTenant(null)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">Cancel</button>
           <button onClick={handleDelete} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Delete</button>
+        </div>
+      </Modal>
+      {/* Tenant Credentials Modal */}
+      <Modal open={!!showCredentials} onClose={() => setShowCredentials(null)} title="Tenant Login Details">
+        <div className="flex flex-col gap-4 items-center">
+          <div className="text-lg font-semibold text-green-800">Tenant account created successfully!</div>
+          <div className="bg-green-50 border border-green-200 rounded-lg px-6 py-4 w-full max-w-md flex flex-col gap-2">
+            <div className="flex items-center gap-2"><MailIcon size={18} className="text-green-600" /><span className="font-bold">Email:</span> <span className="ml-1">{showCredentials?.email}</span></div>
+            <div className="flex items-center gap-2"><KeyIcon size={18} className="text-green-600" /><span className="font-bold">Password:</span> <span className="ml-1">{showCredentials?.password}</span></div>
+          </div>
+          <button onClick={handleDownloadCredentials} className="px-4 py-2 rounded-lg bg-green-700 text-white hover:bg-green-800 mt-2">Download Details</button>
+          <button onClick={() => setShowCredentials(null)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 mt-2">Close</button>
         </div>
       </Modal>
     </div>
