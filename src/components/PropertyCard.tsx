@@ -4,13 +4,13 @@ interface PropertyCardProps {
   property: {
     id: number;
     name: string;
-    image: string;
-    location: string;
-    type: string;
-    bedrooms: number;
-    bathrooms: number;
-    area: number;
-    rent: number;
+    image?: string;
+    location?: string;
+    type?: string;
+    bedrooms?: number;
+    bathrooms?: number;
+    area?: number;
+    rent?: number;
     status: 'vacant' | 'occupied' | 'maintenance';
   };
 }
@@ -28,7 +28,7 @@ export const PropertyCard = ({
       style={{ boxShadow: '0 2px 8px 0 rgba(34,197,94,0.08)' }}
     >
       <div className="h-48 overflow-hidden">
-        <img src={property.image} alt={property.name} className="w-full h-full object-cover" />
+        <img src={property.image || 'https://via.placeholder.com/400x300?text=Property'} alt={property.name} className="w-full h-full object-cover" />
       </div>
       <div className="p-4">
         <div className="flex justify-between items-start">
@@ -41,27 +41,27 @@ export const PropertyCard = ({
         </div>
         <div className="flex items-center mt-2 text-gray-600 text-sm">
           <MapPinIcon size={14} className="mr-1" />
-          <span>{property.location}</span>
+          <span>{property.location || '-'}</span>
         </div>
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center text-gray-600 text-sm">
             <BedIcon size={14} className="mr-1" />
-            <span>{property.bedrooms} BD</span>
+          <span>{property.bedrooms ?? '-'} BD</span>
           </div>
           <div className="flex items-center text-gray-600 text-sm">
             <BathIcon size={14} className="mr-1" />
-            <span>{property.bathrooms} BA</span>
+          <span>{property.bathrooms ?? '-'} BA</span>
           </div>
           <div className="flex items-center text-gray-600 text-sm">
             <SquareIcon size={14} className="mr-1" />
-            <span>{property.area} m²</span>
+          <span>{property.area ?? '-'} m²</span>
           </div>
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600 text-sm">{property.type}</span>
+            <span className="text-gray-600 text-sm">{property.type || '-'}</span>
             <span className="font-bold text-green-700">
-              KES {property.rent.toLocaleString()}
+              {typeof property.rent === 'number' ? `KES ${property.rent.toLocaleString()}` : 'KES -'}
             </span>
           </div>
         </div>

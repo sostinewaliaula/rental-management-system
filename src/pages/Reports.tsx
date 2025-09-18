@@ -1,56 +1,79 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
 import { BanknoteIcon, UsersIcon, BuildingIcon, WrenchIcon, DownloadIcon, CalendarIcon } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 
-const revenueData = [
-  { month: 'Jan', revenue: 320000 },
-  { month: 'Feb', revenue: 340000 },
-  { month: 'Mar', revenue: 360000 },
-  { month: 'Apr', revenue: 390000 },
-  { month: 'May', revenue: 410000 },
-  { month: 'Jun', revenue: 430000 },
-  { month: 'Jul', revenue: 420000 },
-  { month: 'Aug', revenue: 440000 },
-  { month: 'Sep', revenue: 470000 },
-  { month: 'Oct', revenue: 480000 },
-  { month: 'Nov', revenue: 500000 },
-  { month: 'Dec', revenue: 520000 },
-];
-const occupancyData = [
-  { property: 'Westlands', occupancy: 95 },
-  { property: 'Kilimani', occupancy: 88 },
-  { property: 'Lavington', occupancy: 92 },
-  { property: 'Karen', occupancy: 85 },
-  { property: 'Mombasa', occupancy: 80 },
-];
-const paymentStatusData = [
-  { name: 'Completed', value: 320 },
-  { name: 'Pending', value: 45 },
-  { name: 'Overdue', value: 15 },
-];
-const maintenanceTrendData = [
-  { month: 'Jan', requests: 8 },
-  { month: 'Feb', requests: 6 },
-  { month: 'Mar', requests: 10 },
-  { month: 'Apr', requests: 7 },
-  { month: 'May', requests: 12 },
-  { month: 'Jun', requests: 9 },
-  { month: 'Jul', requests: 11 },
-  { month: 'Aug', requests: 8 },
-  { month: 'Sep', requests: 13 },
-  { month: 'Oct', requests: 10 },
-  { month: 'Nov', requests: 7 },
-  { month: 'Dec', requests: 6 },
-];
+const monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const pieColors = ['#22c55e', '#facc15', '#ef4444'];
 
 export const Reports = () => {
-  const [dateRange, setDateRange] = useState('2023');
-  // Mock summary stats
-  const totalRevenue = 520000;
-  const occupancyRate = 91;
-  const activeTenants = 320;
-  const maintenanceRequests = 10;
+  const { token } = useAuth();
+  const [dateRange, setDateRange] = useState(String(new Date().getFullYear()));
+  const [properties, setProperties] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [propRes, payRes, maintRes] = await Promise.all([
+          fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/payments', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/maintenance', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const propsJson = await propRes.json();
+        const paysJson = await payRes.json();
+        const maintJson = await maintRes.json();
+        if (active) {
+          setProperties(propsJson.properties || []);
+          setPayments(paysJson.payments || []);
+          setRequests(maintJson.requests || []);
+        }
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [token]);
+
+  const yearNum = Number(dateRange);
+  const filteredPayments = payments.filter(p => p.year === yearNum && p.status === 'completed');
+  const totalRevenue = filteredPayments.reduce((s, p) => s + p.amount, 0);
+  const activeTenants = useMemo(() => {
+    let count = 0; for (const p of properties) for (const f of (p.floors||[])) for (const u of (f.units||[])) if (u.tenant) count += 1; return count;
+  }, [properties]);
+  const maintenanceRequests = requests.filter((r: any) => new Date(r.dateReported).getFullYear() === yearNum).length;
+  const occupancyData = useMemo(() => {
+    return (properties || []).map((p: any) => {
+      const units = (p.floors||[]).flatMap((f: any) => f.units||[]);
+      const occupied = units.filter((u: any) => u.status === 'occupied').length;
+      const rate = units.length ? Math.round((occupied / units.length) * 100) : 0;
+      return { property: p.name, occupancy: rate };
+    });
+  }, [properties]);
+  const paymentStatusData = useMemo(() => {
+    const completed = payments.filter(p => p.status === 'completed').length;
+    const pending = payments.filter(p => p.status === 'pending').length;
+    const overdue = payments.filter(p => p.status === 'overdue').length;
+    return [{ name: 'Completed', value: completed }, { name: 'Pending', value: pending }, { name: 'Overdue', value: overdue }];
+  }, [payments]);
+  const revenueData = useMemo(() => {
+    const rev: number[] = Array(12).fill(0);
+    for (const p of payments) if (p.status === 'completed' && p.year === yearNum) rev[(p.month||1)-1] += p.amount;
+    return monthLabels.map((m, idx) => ({ month: m, revenue: rev[idx] }));
+  }, [payments, yearNum]);
+  const maintenanceTrendData = useMemo(() => {
+    const counts: number[] = Array(12).fill(0);
+    for (const r of requests) {
+      const d = new Date(r.dateReported); if (d.getFullYear() !== yearNum) continue; counts[d.getMonth()] += 1;
+    }
+    return monthLabels.map((m, idx) => ({ month: m, requests: counts[idx] }));
+  }, [requests, yearNum]);
+
+  const occupancyRate = useMemo(() => {
+    const allUnits = properties.flatMap((p: any) => (p.floors||[]).flatMap((f: any) => f.units||[]));
+    const occupied = allUnits.filter((u: any) => u.status === 'occupied').length;
+    return allUnits.length ? Math.round((occupied / allUnits.length) * 100) : 0;
+  }, [properties]);
 
   return (
     <div>

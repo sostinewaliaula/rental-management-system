@@ -1,139 +1,93 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StatCard } from '../components/StatCard';
 import { PropertyCard } from '../components/PropertyCard';
 import { HomeIcon, UsersIcon, BanknoteIcon, AlertCircleIcon, ArrowRightIcon } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 
 export const Dashboard = () => {
-  // Mock data
+  const { token } = useAuth();
+  const [properties, setProperties] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [maintenanceCounts, setMaintenanceCounts] = useState({ pending: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const [propRes, payRes, maintRes] = await Promise.all([
+          fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/payments', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/maintenance', { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ ok: false, json: async () => ({ requests: [] }) } as any)),
+        ]);
+        const propsJson = await propRes.json();
+        const paysJson = await payRes.json();
+        const maintJson = maintRes.ok ? await maintRes.json() : { requests: [] };
+        if (!propRes.ok) throw new Error('Failed properties');
+        if (!payRes.ok) throw new Error('Failed payments');
+        if (active) {
+          setProperties(propsJson.properties || []);
+          setPayments(paysJson.payments || []);
+          const pending = (maintJson.requests || []).filter((r: any) => r.status !== 'completed').length;
+          setMaintenanceCounts({ pending });
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, [token]);
+
+  const totalProperties = properties.length;
+  const activeTenants = useMemo(() => {
+    let count = 0;
+    for (const p of properties) for (const f of (p.floors || [])) for (const u of (f.units || [])) if (u.tenant) count += 1;
+    return count;
+  }, [properties]);
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const monthlyRevenue = payments.filter(p => p.status === 'completed' && p.month === currentMonth && p.year === currentYear).reduce((s, p) => s + p.amount, 0);
+
   const stats = [
-    {
-    title: 'Total Properties',
-    value: '12',
-    icon: HomeIcon,
-      color: 'green' as const,
-    },
-    {
-    title: 'Active Tenants',
-    value: '28',
-    icon: UsersIcon,
-    change: '12%',
-    positive: true,
-      color: 'blue' as const,
-    },
-    {
-    title: 'Monthly Revenue',
-    value: 'KES 320,500',
-    icon: BanknoteIcon,
-    change: '8%',
-    positive: true,
-      color: 'purple' as const,
-    },
-    {
-    title: 'Pending Issues',
-    value: '5',
-    icon: AlertCircleIcon,
-    change: '2',
-    positive: false,
-      color: 'orange' as const,
-    },
+    { title: 'Total Properties', value: String(totalProperties), icon: HomeIcon, color: 'green' as const },
+    { title: 'Active Tenants', value: String(activeTenants), icon: UsersIcon, change: undefined, positive: true, color: 'blue' as const },
+    { title: 'Monthly Revenue', value: `KES ${monthlyRevenue.toLocaleString()}`, icon: BanknoteIcon, change: undefined, positive: true, color: 'purple' as const },
+    { title: 'Pending Issues', value: String(maintenanceCounts.pending), icon: AlertCircleIcon, change: undefined, positive: false, color: 'orange' as const },
   ];
 
-  // Chart data
-  const revenueData = [
-    { month: 'Apr', revenue: 250000 },
-    { month: 'May', revenue: 270000 },
-    { month: 'Jun', revenue: 300000 },
-    { month: 'Jul', revenue: 310000 },
-    { month: 'Aug', revenue: 320000 },
-    { month: 'Sep', revenue: 315000 },
-    { month: 'Oct', revenue: 320500 },
-  ];
-  const propertyTypeData = [
-    { name: 'Apartment', value: 5 },
-    { name: 'Townhouse', value: 3 },
-    { name: 'Villa', value: 2 },
-    { name: 'House', value: 1 },
-    { name: 'Cottage', value: 1 },
-  ];
+  const propertyTypeMap: Record<string, number> = {};
+  for (const p of properties) propertyTypeMap[p.type] = (propertyTypeMap[p.type] || 0) + 1;
+  const propertyTypeData = Object.entries(propertyTypeMap).map(([name, value]) => ({ name, value }));
   const pieColors = ['#22c55e', '#3b82f6', '#a855f7', '#f59e42', '#f43f5e'];
 
-  const recentProperties = [
-    {
-    id: 1,
-    name: 'Westlands Apartment',
-      image:
-        'https://images.unsplash.com/photo-1568605114967-8130f3a36994?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80',
-    location: 'Westlands, Nairobi',
-    type: 'Apartment',
-    bedrooms: 2,
-    bathrooms: 1,
-    area: 85,
-    rent: 45000,
-      status: 'vacant' as const,
-    },
-    {
-    id: 2,
-    name: 'Kilimani Townhouse',
-      image:
-        'https://images.unsplash.com/photo-1598228723793-52759bba239c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2074&q=80',
-    location: 'Kilimani, Nairobi',
-    type: 'Townhouse',
-    bedrooms: 3,
-    bathrooms: 2,
-    area: 120,
-    rent: 65000,
-      status: 'occupied' as const,
-    },
-    {
-    id: 3,
-    name: 'Mombasa Beach Villa',
-      image:
-        'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80',
-    location: 'Nyali, Mombasa',
-    type: 'Villa',
-    bedrooms: 4,
-    bathrooms: 3,
-    area: 200,
-    rent: 120000,
-      status: 'maintenance' as const,
-    },
-  ];
-  const recentPayments = [
-    {
-    id: 1,
-    tenant: 'John Mwangi',
-    property: 'Westlands Apartment 3B',
-    amount: 45000,
-    date: '2023-10-01',
-      status: 'completed',
-    },
-    {
-    id: 2,
-    tenant: 'Sarah Ochieng',
-    property: 'Kilimani Townhouse 7',
-    amount: 65000,
-    date: '2023-09-30',
-      status: 'completed',
-    },
-    {
-    id: 3,
-    tenant: 'David Kimani',
-    property: 'Lavington House 12',
-    amount: 85000,
-    date: '2023-09-28',
-      status: 'completed',
-    },
-    {
-    id: 4,
-    tenant: 'Mary Njeri',
-    property: 'Karen Cottage 2',
-    amount: 55000,
-    date: '2023-09-25',
-      status: 'pending',
-    },
-  ];
+  const recentProperties = useMemo(() => properties.slice(0, 3).map((p: any) => ({
+    id: p.id, name: p.name, image: p.image, location: p.location, type: p.type, bedrooms: undefined, bathrooms: undefined, area: undefined, rent: undefined, status: 'vacant' as const,
+  })), [properties]);
+
+  const recentPayments = useMemo(() => (payments || []).slice(0, 4).map((p: any) => ({
+    id: p.id,
+    tenant: p.tenant?.name || '-',
+    property: p.unit?.floor?.property?.name ? `${p.unit.floor.property.name} ${p.unit.number || ''}` : p.unit?.number || '-',
+    amount: p.amount,
+    date: p.date ? new Date(p.date).toISOString().slice(0,10) : '-',
+    status: p.status,
+  })), [payments]);
+
+  const monthsBack = 6;
+  const revMap: Record<string, number> = {};
+  for (const p of payments) if (p.status === 'completed') {
+    const key = `${p.year}-${String(p.month).padStart(2,'0')}`;
+    revMap[key] = (revMap[key] || 0) + p.amount;
+  }
+  const labels = Array.from({ length: monthsBack }, (_, i) => {
+    const d = new Date(currentYear, currentMonth - 1 - (monthsBack - 1 - i), 1);
+    return { key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleString(undefined, { month: 'short' }) };
+  });
+  const revenueData = labels.map(({ key, label }) => ({ month: label, revenue: revMap[key] || 0 }));
 
   return (
     <div>
