@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ColumnDef, getCoreRowModel, getPaginationRowModel, getSortedRowModel, flexRender, useReactTable } from '@tanstack/react-table';
-import { BanknoteIcon, CalendarIcon, CheckCircle2Icon, ClockIcon, AlertCircleIcon, HomeIcon, XIcon } from 'lucide-react';
+import { BanknoteIcon, CalendarIcon, CheckCircle2Icon, ClockIcon, AlertCircleIcon, HomeIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 interface ModalProps {
@@ -24,9 +24,7 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
   return (
     <div ref={modalRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-2" onClick={handleBackdropClick}>
       <div className="bg-white rounded-3xl shadow-2xl p-6 w-[90vw] max-w-2xl relative animate-fadeIn border border-green-100">
-        <button onClick={onClose} className="absolute top-6 right-8 text-gray-400 hover:text-green-700 p-2 rounded-full" aria-label="Close">
-          <XIcon size={22} />
-        </button>
+        <button type="button" onClick={onClose} className="absolute top-6 right-8 bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded cursor-pointer z-10" aria-label="Close">Close</button>
         <h2 className="text-2xl font-extrabold mb-6 text-green-800 text-center">{title}</h2>
         <div className="w-full flex flex-col gap-6 text-base text-gray-800">
           {children}
