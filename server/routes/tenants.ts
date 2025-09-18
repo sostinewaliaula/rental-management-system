@@ -27,6 +27,17 @@ router.get('/', requireAuth, async (_req, res) => {
   res.json({ tenants });
 });
 
+// GET /api/tenants/me - current logged-in tenant profile
+router.get('/me', requireAuth, async (req, res) => {
+  const user = (req as any).user as { id: number };
+  const tenant = await prisma.tenant.findFirst({
+    where: { userId: user.id },
+    include: { unit: { include: { floor: { include: { property: true } } } }, user: { select: { id: true, name: true, email: true } } },
+  });
+  if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
+  res.json({ tenant });
+});
+
 router.get('/vacant-units', requireAuth, async (_req, res) => {
   const units = await prisma.unit.findMany({
     where: { status: 'vacant' },

@@ -37,6 +37,28 @@ router.get('/me', async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password - logged-in user changes own password
+router.post('/change-password', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ message: 'Missing token' });
+  const token = auth.replace('Bearer ', '');
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+  if (!currentPassword || !newPassword) return res.status(400).json({ message: 'Both currentPassword and newPassword are required' });
+  try {
+    const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
+    const payload = jwt.verify(token, secret) as { id: number };
+    const user = await prisma.user.findUnique({ where: { id: payload.id } });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) return res.status(401).json({ message: 'Current password is incorrect' });
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+    res.json({ ok: true });
+  } catch {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+});
+
 export default router;
 
 

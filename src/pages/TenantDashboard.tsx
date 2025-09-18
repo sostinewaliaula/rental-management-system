@@ -1,30 +1,50 @@
-import React from 'react';
-import { User2Icon, HomeIcon, CalendarIcon, BanknoteIcon, AlertCircleIcon, MailIcon, PhoneIcon } from 'lucide-react';
-
-// Mock tenant data (replace with real data from backend later)
-const tenant = {
-  name: 'John Mwangi',
-  email: 'john.mwangi@example.com',
-  phone: '+254 712 345 678',
-  property: 'Westlands Apartment',
-  unit: '3B',
-  leaseStart: '2023-01-01',
-  leaseEnd: '2023-12-31',
-  rent: 45000,
-  status: 'active',
-};
-
-const payments = [
-  { id: 1, month: 'Sep 2023', amount: 45000, status: 'completed' },
-  { id: 2, month: 'Oct 2023', amount: 45000, status: 'pending' },
-];
-
-const maintenanceRequests = [
-  { id: 1, title: 'Leaking tap', date: '2023-09-15', status: 'completed' },
-  { id: 2, title: 'Broken window', date: '2023-10-05', status: 'pending' },
-];
+import React, { useEffect, useMemo, useState } from 'react';
+import { User2Icon, HomeIcon, CalendarIcon, BanknoteIcon, AlertCircleIcon, MailIcon, PhoneIcon, CheckCircle2Icon, ClockIcon } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 
 export const TenantDashboard = () => {
+  const { token } = useAuth();
+  const [tenant, setTenant] = useState<any>(null);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const [meRes, payRes, reqRes] = await Promise.all([
+          fetch('/api/tenants/me', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/payments/my', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/maintenance/my', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const me = await meRes.json();
+        const pay = await payRes.json();
+        const req = await reqRes.json();
+        if (!meRes.ok) throw new Error(me?.message || 'Failed to load tenant');
+        if (active) {
+          setTenant(me.tenant);
+          setPayments(pay.payments || []);
+          setRequests(req.requests || []);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, [token]);
+
+  const unitLabel = tenant ? `${tenant.unit?.floor?.property?.name || ''} ${tenant.unit?.number || ''}` : '';
+  const rent = tenant?.unit?.rent ?? 0;
+  const completedPayments = payments.filter(p => p.status === 'completed');
+  const last3Payments = useMemo(() => completedPayments.slice(0, 3), [payments]);
+  const pendingRequests = requests.filter((r: any) => r.status !== 'completed');
+  const completedRequests = requests.filter((r: any) => r.status === 'completed');
+
+  if (loading) return <div className="p-6">Loading...</div>;
+  if (!tenant) return <div className="p-6">No tenant profile found.</div>;
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-8">
@@ -40,10 +60,9 @@ export const TenantDashboard = () => {
           <div className="flex items-center gap-2 text-gray-600"><PhoneIcon size={16} /> {tenant.phone}</div>
         </div>
         <div className="flex-1 flex flex-col gap-2 justify-center">
-          <div className="flex items-center gap-2 text-gray-700"><HomeIcon size={18} /> Property: <span className="font-semibold">{tenant.property}</span></div>
-          <div className="flex items-center gap-2 text-gray-700"><HomeIcon size={18} /> Unit: <span className="font-semibold">{tenant.unit}</span></div>
-          <div className="flex items-center gap-2 text-gray-700"><CalendarIcon size={18} /> Lease: <span className="font-semibold">{tenant.leaseStart}</span> to <span className="font-semibold">{tenant.leaseEnd}</span></div>
-          <div className="flex items-center gap-2 text-purple-700 font-semibold"><BanknoteIcon size={18} /> Rent: KES {tenant.rent.toLocaleString()}</div>
+          <div className="flex items-center gap-2 text-gray-700"><HomeIcon size={18} /> Property/Unit: <span className="font-semibold">{unitLabel}</span></div>
+          <div className="flex items-center gap-2 text-gray-700"><CalendarIcon size={18} /> Lease: <span className="font-semibold">{new Date(tenant.moveInDate).toISOString().slice(0,10)}</span> to <span className="font-semibold">{new Date(tenant.leaseEnd).toISOString().slice(0,10)}</span></div>
+          <div className="flex items-center gap-2 text-purple-700 font-semibold"><BanknoteIcon size={18} /> Rent: KES {rent.toLocaleString()}</div>
           <div className="flex items-center gap-2 text-green-700 font-semibold"><AlertCircleIcon size={18} /> Status: <span className="capitalize">{tenant.status}</span></div>
         </div>
       </div>
@@ -61,9 +80,9 @@ export const TenantDashboard = () => {
             </tr>
           </thead>
           <tbody>
-            {payments.map(payment => (
+            {last3Payments.map(payment => (
               <tr key={payment.id} className="border-b last:border-0 hover:bg-green-50 transition-all">
-                <td className="py-2 pr-4">{payment.month}</td>
+                <td className="py-2 pr-4">{new Date(payment.year, payment.month - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</td>
                 <td className="py-2 pr-4">KES {payment.amount.toLocaleString()}</td>
                 <td className={`py-2 pr-4 font-semibold ${payment.status === 'completed' ? 'text-green-700' : 'text-yellow-700'}`}>{payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}</td>
               </tr>
@@ -85,11 +104,11 @@ export const TenantDashboard = () => {
             </tr>
           </thead>
           <tbody>
-            {maintenanceRequests.map(req => (
+            {requests.slice(0, 5).map(req => (
               <tr key={req.id} className="border-b last:border-0 hover:bg-green-50 transition-all">
                 <td className="py-2 pr-4">{req.title}</td>
-                <td className="py-2 pr-4">{req.date}</td>
-                <td className={`py-2 pr-4 font-semibold ${req.status === 'completed' ? 'text-green-700' : 'text-yellow-700'}`}>{req.status.charAt(0).toUpperCase() + req.status.slice(1)}</td>
+                <td className="py-2 pr-4">{new Date(req.dateReported).toISOString().slice(0,10)}</td>
+                <td className={`py-2 pr-4 font-semibold ${req.status === 'completed' ? 'text-green-700' : 'text-yellow-700'}`}>{req.status === 'in_progress' ? 'In Progress' : req.status.charAt(0).toUpperCase() + req.status.slice(1)}</td>
               </tr>
             ))}
           </tbody>

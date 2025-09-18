@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../auth/AuthContext';
 import { User2Icon, MailIcon, PhoneIcon, LockIcon, KeyIcon, BellIcon, SmartphoneIcon, BuildingIcon, ImageIcon, CheckCircle2Icon, AlertCircleIcon, Trash2Icon, UploadIcon, EyeIcon, XIcon, ShieldCheckIcon } from 'lucide-react';
 
 // Modal component (copied/adapted)
@@ -44,12 +45,13 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
 };
 
 export const Settings = () => {
+  const { token, user, login } = useAuth();
   // Profile state
   const [profile, setProfile] = useState({
     avatar: '',
-    name: 'Dinah Gaceri',
-    email: 'dinah.gaceri@example.com',
-    phone: '+254 712 345 678',
+    name: '',
+    email: '',
+    phone: '',
   });
   const [profileEdit, setProfileEdit] = useState(false);
   const [profileDraft, setProfileDraft] = useState(profile);
@@ -82,6 +84,19 @@ export const Settings = () => {
   ]);
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [deviceToRemove, setDeviceToRemove] = useState<any>(null);
+
+  // Load current user profile
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (res.ok) {
+          setProfile(p => ({ ...p, name: data.user.name, email: data.user.email }));
+        }
+      } catch {}
+    })();
+  }, [token]);
 
   // Summary stats
   const profileComplete = profile.name && profile.email && profile.phone && profile.avatar;
@@ -136,7 +151,11 @@ export const Settings = () => {
               {!profileEdit && <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={() => { setProfileEdit(true); setProfileDraft(profile); }}>Edit</button>}
               {profileEdit && (
                 <>
-                  <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={() => { setProfile(profileDraft); setProfileEdit(false); }}>Save</button>
+                  <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={async () => {
+                    // In a real app, call backend to update profile fields if supported
+                    setProfile(profileDraft);
+                    setProfileEdit(false);
+                  }}>Save</button>
                   <button className="ml-2 px-3 py-1 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" onClick={() => setProfileEdit(false)}>Cancel</button>
                 </>
               )}
@@ -276,7 +295,18 @@ export const Settings = () => {
       </div>
       {/* Modals */}
       <Modal open={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Change Password">
-        <form className="flex flex-col gap-4">
+        <form className="flex flex-col gap-4" onSubmit={async (e) => {
+          e.preventDefault();
+          if (!passwordDraft.new || passwordDraft.new !== passwordDraft.confirm) return;
+          try {
+            const res = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ currentPassword: passwordDraft.current, newPassword: passwordDraft.new }) });
+            const data = await res.json();
+            if (res.ok) {
+              setShowPasswordModal(false);
+              setPasswordDraft({ current: '', new: '', confirm: '' });
+            }
+          } catch {}
+        }}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
             <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={passwordDraft.current} onChange={e => setPasswordDraft({ ...passwordDraft, current: e.target.value })} />
