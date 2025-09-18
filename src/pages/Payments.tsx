@@ -152,7 +152,8 @@ export const Payments = () => {
     return payments.filter(payment => {
       const tenant = tenants.find(t => t.id === payment.tenantId);
       const unit = units.find(u => u.id === payment.unitId);
-      const matchesSearch = tenant && (tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) || (unit && `${unit.property || ''} ${unit.number || ''}`.toLowerCase().includes(searchTerm.toLowerCase())));
+      const unitLabel = unit ? `${(unit.floor?.property?.name || unit.property || '')} ${unit.number || ''}` : '';
+      const matchesSearch = tenant && (tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) || unitLabel.toLowerCase().includes(searchTerm.toLowerCase()));
       let statusMatch = filterStatus === 'all' || payment.status === filterStatus;
       let monthMatch = filterMonth === 'all' || payment.month === Number(filterMonth);
       let tenantMatch = filterTenant === 'all' || payment.tenantId === Number(filterTenant);
@@ -181,7 +182,8 @@ export const Payments = () => {
       accessorKey: 'unitId',
       cell: info => {
         const unit = units.find(u => u.id === info.getValue());
-        return <span className="text-gray-600 flex items-center gap-2"><HomeIcon size={15} className="text-green-400" />{unit ? `${unit.property} ${unit.number}` : '-'}</span>;
+        const label = unit ? `${(unit.floor?.property?.name || unit.property || '')} ${unit.number}` : '-';
+        return <span className="text-gray-600 flex items-center gap-2"><HomeIcon size={15} className="text-green-400" />{label}</span>;
       },
     },
     {
@@ -525,7 +527,7 @@ export const Payments = () => {
             </div>
             <div>
               <p className="text-sm font-semibold mb-1">Property/Unit</p>
-              <p className="text-gray-800">{units.find(u => u.id === viewPayment.unitId)?.property} {units.find(u => u.id === viewPayment.unitId)?.number}</p>
+              <p className="text-gray-800">{(() => { const u = units.find(u => u.id === viewPayment.unitId); return u ? `${(u.floor?.property?.name || u.property || '')} ${u.number}` : '-' })()}</p>
                       </div>
             <div>
               <p className="text-sm font-semibold mb-1">Month</p>

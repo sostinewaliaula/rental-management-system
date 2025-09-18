@@ -5,7 +5,7 @@ import { Header } from './components/Header';
 import { Dashboard } from './pages/Dashboard';
 import { Properties } from './pages/Properties';
 import { Tenants } from './pages/Tenants';
-import { Payments } from './pages/Payments';
+import PaymentsSwitch from './pages/PaymentsSwitch';
 import { Maintenance } from './pages/Maintenance';
 import MaintenanceSwitch from './pages/MaintenanceSwitch';
 import { Settings } from './pages/Settings';
@@ -38,7 +38,7 @@ export function App() {
                         <Route path="/dashboard" element={<RequireRole roles={["landlord"]}><Dashboard /></RequireRole>} />
                         <Route path="/properties" element={<Properties />} />
                         <Route path="/tenants" element={<Tenants />} />
-                        <Route path="/payments" element={<Payments />} />
+                        <Route path="/payments" element={<PaymentsSwitch />} />
                         <Route path="/maintenance" element={<MaintenanceSwitch />} />
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/notifications" element={<Notifications />} />
