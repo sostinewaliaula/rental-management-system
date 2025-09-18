@@ -7,6 +7,7 @@ import { Properties } from './pages/Properties';
 import { Tenants } from './pages/Tenants';
 import { Payments } from './pages/Payments';
 import { Maintenance } from './pages/Maintenance';
+import MaintenanceSwitch from './pages/MaintenanceSwitch';
 import { Settings } from './pages/Settings';
 import { Reports } from './pages/Reports';
 import { Notifications } from './pages/Notifications';
@@ -38,7 +39,7 @@ export function App() {
                         <Route path="/properties" element={<Properties />} />
                         <Route path="/tenants" element={<Tenants />} />
                         <Route path="/payments" element={<Payments />} />
-                        <Route path="/maintenance" element={<Maintenance />} />
+                        <Route path="/maintenance" element={<MaintenanceSwitch />} />
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/notifications" element={<Notifications />} />
                         <Route path="/settings" element={<Settings />} />

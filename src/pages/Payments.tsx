@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { SearchIcon, FilterIcon, DownloadIcon, PlusIcon, EyeIcon, PencilIcon, Trash2Icon, CheckCircle2Icon, AlertCircleIcon, ClockIcon, BanknoteIcon, User2Icon, HomeIcon, CalendarIcon, XIcon } from 'lucide-react';
 import { Listbox } from '@headlessui/react';
+import { useAuth } from '../auth/AuthContext';
 
 // Modal component (copied/adapted)
 interface ModalProps {
@@ -94,15 +95,18 @@ const statusIcons: { [key: string]: React.ReactNode } = {
 };
 
 export const Payments = () => {
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterMonth, setFilterMonth] = useState('all');
   const [filterTenant, setFilterTenant] = useState('all');
-  const [payments, setPayments] = useState(initialPayments);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
   const [recordModalOpen, setRecordModalOpen] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
-  const [selectedYear, setSelectedYear] = useState<number>(2023);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [formError, setFormError] = useState('');
   const [viewPayment, setViewPayment] = useState<any>(null);
   const [editPayment, setEditPayment] = useState<any>(null);
@@ -112,22 +116,49 @@ export const Payments = () => {
   const [page, setPage] = useState(1);
   const pageSize = 6;
 
+  // Fetch payments (and extract tenants/units) on mount and poll every 10s
+  useEffect(() => {
+    let active = true;
+    let interval: any;
+    const fetchPayments = async () => {
+      try {
+        const res = await fetch('/api/payments', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load payments');
+        if (active) {
+          setPayments(data.payments || []);
+          // Extract unique tenants and units from payments
+          const tMap: any = {}, uMap: any = {};
+          (data.payments || []).forEach((p: any) => {
+            if (p.tenant) tMap[p.tenant.id] = p.tenant;
+            if (p.unit) uMap[p.unit.id] = p.unit;
+          });
+          setTenants(Object.values(tMap));
+          setUnits(Object.values(uMap));
+        }
+      } catch {}
+    };
+    fetchPayments();
+    interval = setInterval(fetchPayments, 10000);
+    return () => { active = false; clearInterval(interval); };
+  }, [token]);
+
   // Find tenant/unit for selectedTenantId
-  const selectedTenant = mockTenants.find(t => t.id === selectedTenantId);
-  const selectedUnit = selectedTenant ? mockUnits.find(u => u.id === selectedTenant.unitId) : null;
+  const selectedTenant = tenants.find(t => t.id === selectedTenantId);
+  const selectedUnit = selectedTenant ? units.find(u => u.id === selectedTenant.unitId) : null;
 
   // Filtered payments
   const filteredPayments = useMemo(() => {
     return payments.filter(payment => {
-      const tenant = mockTenants.find(t => t.id === payment.tenantId);
-      const unit = mockUnits.find(u => u.id === payment.unitId);
-      const matchesSearch = tenant && (tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) || (unit && `${unit.property} ${unit.number}`.toLowerCase().includes(searchTerm.toLowerCase())));
+      const tenant = tenants.find(t => t.id === payment.tenantId);
+      const unit = units.find(u => u.id === payment.unitId);
+      const matchesSearch = tenant && (tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) || (unit && `${unit.property || ''} ${unit.number || ''}`.toLowerCase().includes(searchTerm.toLowerCase())));
       let statusMatch = filterStatus === 'all' || payment.status === filterStatus;
       let monthMatch = filterMonth === 'all' || payment.month === Number(filterMonth);
       let tenantMatch = filterTenant === 'all' || payment.tenantId === Number(filterTenant);
       return matchesSearch && statusMatch && monthMatch && tenantMatch;
     });
-  }, [payments, searchTerm, filterStatus, filterMonth, filterTenant]);
+  }, [payments, searchTerm, filterStatus, filterMonth, filterTenant, tenants, units]);
 
   // Summary stats
   const totalPaid = payments.filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
@@ -141,7 +172,7 @@ export const Payments = () => {
       header: 'Tenant',
       accessorKey: 'tenantId',
       cell: info => {
-        const tenant = mockTenants.find(t => t.id === info.getValue());
+        const tenant = tenants.find(t => t.id === info.getValue());
         return <span className="font-semibold text-gray-800 flex items-center gap-2"><User2Icon size={16} className="text-green-500" />{tenant ? tenant.name : '-'}</span>;
       },
     },
@@ -149,7 +180,7 @@ export const Payments = () => {
       header: 'Property/Unit',
       accessorKey: 'unitId',
       cell: info => {
-        const unit = mockUnits.find(u => u.id === info.getValue());
+        const unit = units.find(u => u.id === info.getValue());
         return <span className="text-gray-600 flex items-center gap-2"><HomeIcon size={15} className="text-green-400" />{unit ? `${unit.property} ${unit.number}` : '-'}</span>;
       },
     },
@@ -205,11 +236,20 @@ export const Payments = () => {
           <button className="p-2 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 text-red-700 font-semibold shadow-sm" title="Delete" onClick={e => { e.stopPropagation(); setDeletePayment(info.row.original); }}>
             <Trash2Icon size={16} /> Delete
           </button>
+          {info.row.original.status === 'pending' && (
+            <button
+              className="p-2 rounded-lg hover:bg-yellow-100 transition-colors flex items-center gap-1 text-yellow-700 font-semibold shadow-sm"
+              title="Simulate M-Pesa Payment"
+              onClick={() => simulateMpesaPayment(info.row.original)}
+            >
+              <ClockIcon size={16} /> Simulate
+            </button>
+          )}
         </div>
       ),
       enableSorting: false,
     },
-  ], []);
+  ], [tenants, units]);
 
   // Table setup
   const tableData = useMemo(() => filteredPayments, [filteredPayments]);
@@ -237,6 +277,25 @@ export const Payments = () => {
     },
     pageCount: Math.ceil(filteredPayments.length / pageSize),
   });
+
+  // Simulate M-Pesa payment reflection
+  const simulateMpesaPayment = async (payment: any) => {
+    try {
+      const res = await fetch(`/api/payments/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          status: 'completed',
+          method: 'M-Pesa',
+          reference: `MPE${Math.floor(100000000 + Math.random() * 900000000)}`,
+          date: new Date().toISOString().slice(0, 10),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to update payment');
+      setPayments(prev => prev.map(p => p.id === payment.id ? data.payment : p));
+    } catch {}
+  };
 
   // Record Payment handler
   const handleRecordPayment = (e: React.FormEvent) => {
@@ -338,7 +397,7 @@ export const Payments = () => {
             <FilterIcon size={18} className="text-gray-400 mr-2" />
             <select className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent" value={filterTenant} onChange={e => setFilterTenant(e.target.value)}>
               <option value="all">All Tenants</option>
-              {mockTenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
         </div>
@@ -411,7 +470,7 @@ export const Payments = () => {
                     {selectedTenant ? selectedTenant.name : <span className="text-gray-400">Select tenant...</span>}
                   </Listbox.Button>
                   <Listbox.Options className="absolute z-10 mt-1 w-full bg-white border border-green-100 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
-                    {mockTenants.map(t => (
+                    {tenants.map(t => (
                       <Listbox.Option key={t.id} value={t.id} className={({ active, selected }) => `px-4 py-2 cursor-pointer ${active ? 'bg-green-100' : ''} ${selected ? 'font-bold' : ''}`}>{t.name}</Listbox.Option>
                     ))}
                   </Listbox.Options>
@@ -462,11 +521,11 @@ export const Payments = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm font-semibold mb-1">Tenant</p>
-              <p className="text-gray-800">{mockTenants.find(t => t.id === viewPayment.tenantId)?.name || '-'}</p>
+              <p className="text-gray-800">{tenants.find(t => t.id === viewPayment.tenantId)?.name || '-'}</p>
             </div>
             <div>
               <p className="text-sm font-semibold mb-1">Property/Unit</p>
-              <p className="text-gray-800">{mockUnits.find(u => u.id === viewPayment.unitId)?.property} {mockUnits.find(u => u.id === viewPayment.unitId)?.number}</p>
+              <p className="text-gray-800">{units.find(u => u.id === viewPayment.unitId)?.property} {units.find(u => u.id === viewPayment.unitId)?.number}</p>
                       </div>
             <div>
               <p className="text-sm font-semibold mb-1">Month</p>
@@ -537,7 +596,7 @@ export const Payments = () => {
                     {selectedTenant ? selectedTenant.name : <span className="text-gray-400">Select tenant...</span>}
                   </Listbox.Button>
                   <Listbox.Options className="absolute z-10 mt-1 w-full bg-white border border-green-100 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
-                    {mockTenants.map(t => (
+                    {tenants.map(t => (
                       <Listbox.Option key={t.id} value={t.id} className={({ active, selected }) => `px-4 py-2 cursor-pointer ${active ? 'bg-green-100' : ''} ${selected ? 'font-bold' : ''}`}>{t.name}</Listbox.Option>
                     ))}
                   </Listbox.Options>

@@ -72,6 +72,30 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/tenants/:id - update tenant details
+router.patch('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, phone, email, moveInDate, leaseEnd, status } = req.body;
+  if (!id) return res.status(400).json({ message: 'Invalid tenant id' });
+  try {
+    const updated = await prisma.tenant.update({
+      where: { id },
+      data: {
+        name,
+        phone,
+        email,
+        moveInDate: moveInDate ? new Date(moveInDate) : undefined,
+        leaseEnd: leaseEnd ? new Date(leaseEnd) : undefined,
+        status,
+      },
+      include: { unit: { include: { floor: { include: { property: true } } } } },
+    });
+    res.json({ tenant: updated });
+  } catch (e: any) {
+    res.status(400).json({ message: 'Could not update tenant' });
+  }
+});
+
 export default router;
 
 

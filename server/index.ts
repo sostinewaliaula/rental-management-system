@@ -7,6 +7,8 @@ import authRouter from './routes/auth';
 import usersRouter from './routes/users';
 import propertiesRouter from './routes/properties';
 import tenantsRouter from './routes/tenants';
+import paymentsRouter from './routes/payments';
+import maintenanceRouter from './routes/maintenance';
 
 dotenv.config();
 dotenv.config({ path: '.env.local' });
@@ -31,6 +33,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/properties', propertiesRouter);
 app.use('/api/tenants', tenantsRouter);
+app.use('/api/payments', paymentsRouter);
+app.use('/api/maintenance', maintenanceRouter);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

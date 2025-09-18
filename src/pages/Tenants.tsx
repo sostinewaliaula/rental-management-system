@@ -397,16 +397,48 @@ export const Tenants = () => {
       setFormError(err.message);
     }
   };
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTenant.name || !formTenant.phone || !formTenant.email || !formTenant.property || !formTenant.moveInDate || !formTenant.leaseEnd || !formTenant.rent) {
+    if (!formTenant.name || !formTenant.phone || !formTenant.email || !formTenant.moveInDate || !formTenant.leaseEnd || !editTenant) {
       setFormError('Please fill all required fields.');
       return;
     }
-    setTenants(prev => prev.map(t => t.id === editTenant!.id ? { ...formTenant, id: editTenant!.id } : t));
-    setEditTenant(null);
-    setFormTenant({ name: '', phone: '', email: '', property: '', moveInDate: '', leaseEnd: '', rent: 0, status: 'active' });
-    setFormError('');
+    try {
+      const res = await fetch(`/api/tenants/${editTenant.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: formTenant.name,
+          phone: formTenant.phone,
+          email: formTenant.email,
+          moveInDate: formTenant.moveInDate,
+          leaseEnd: formTenant.leaseEnd,
+          status: formTenant.status,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || 'Failed to update tenant');
+      // Refresh tenants list
+      const ref = await fetch('/api/tenants', { headers: { Authorization: `Bearer ${token}` } });
+      const refData = await ref.json();
+      const mapped = (refData.tenants || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        phone: t.phone,
+        email: t.email,
+        property: `${t.unit?.floor?.property?.name || ''} ${t.unit?.number || ''}`.trim(),
+        moveInDate: t.moveInDate?.slice(0,10) || '',
+        leaseEnd: t.leaseEnd?.slice(0,10) || '',
+        rent: t.unit?.rent || 0,
+        status: t.status || 'active',
+      }));
+      setTenants(mapped);
+      setEditTenant(null);
+      setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
+      setFormError('');
+    } catch (err: any) {
+      setFormError(err.message);
+    }
   };
   // Delete handler: mark unit as vacant
   const handleDelete = () => {

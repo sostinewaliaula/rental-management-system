@@ -74,8 +74,46 @@ async function main() {
     create: { number: 'G1', type: 'three bedroom', status: 'vacant', floorId: kilimaniGround.id, rent: 95000 },
   });
 
+  // Link tenant user to a tenant entity in a unit
+  const tenantUser = await prisma.user.findUnique({ where: { email: 'tenant@example.com' } });
+  if (tenantUser) {
+    await prisma.tenant.upsert({
+      where: { id: 1 },
+      update: { name: 'Tina Tenant', email: tenantUser.email, phone: '+254700000000', moveInDate: new Date('2024-01-01'), leaseEnd: new Date('2025-12-31'), status: 'active', unitId: 1, userId: tenantUser.id },
+      create: { name: 'Tina Tenant', email: tenantUser.email, phone: '+254700000000', moveInDate: new Date('2024-01-01'), leaseEnd: new Date('2025-12-31'), status: 'active', unitId: 1, userId: tenantUser.id },
+    });
+  }
+
+  // Seed ~10 maintenance requests across units
+  const sampleRequests = [
+    { title: 'Leaking tap in kitchen', description: 'Water dripping continuously under sink.', priority: 'medium', status: 'pending', unitId: 1, tenantId: 1 },
+    { title: 'Bathroom tiles loose', description: 'Tiles coming off near shower area.', priority: 'low', status: 'pending', unitId: 1, tenantId: 1 },
+    { title: 'AC not cooling', description: 'AC blows warm air after 10 minutes.', priority: 'high', status: 'in_progress', unitId: 3 },
+    { title: 'Broken window', description: 'Cracked bedroom window needs replacement.', priority: 'medium', status: 'completed', unitId: 3 },
+    { title: 'Power socket faulty', description: 'Living room socket sparks when plugging.', priority: 'high', status: 'pending', unitId: 4 },
+    { title: 'Paint peeling', description: 'Ceiling paint peeling in corridor.', priority: 'low', status: 'pending', unitId: 2 },
+    { title: 'Elevator noise', description: 'Odd grinding sound when stopping.', priority: 'medium', status: 'in_progress', unitId: 1 },
+    { title: 'Gate remote not working', description: 'Remote fails intermittently.', priority: 'low', status: 'completed', unitId: 5 },
+    { title: 'Water heater issue', description: 'Heats for a minute then cold.', priority: 'high', status: 'pending', unitId: 1, tenantId: 1 },
+    { title: 'Clogged drain', description: 'Bathroom drain clogs frequently.', priority: 'medium', status: 'pending', unitId: 1, tenantId: 1 },
+  ] as const;
+
+  for (const r of sampleRequests) {
+    await prisma.maintenanceRequest.create({
+      data: {
+        title: r.title,
+        description: r.description,
+        priority: r.priority,
+        status: r.status,
+        dateReported: new Date(),
+        unit: { connect: { id: r.unitId } },
+        tenant: r.tenantId ? { connect: { id: r.tenantId } } : undefined,
+      },
+    });
+  }
+
   // eslint-disable-next-line no-console
-  console.log('Seeded users and properties');
+  console.log('Seeded users, properties, units, tenant, and maintenance requests');
 }
 
 main().finally(async () => prisma.$disconnect());

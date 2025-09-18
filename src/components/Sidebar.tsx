@@ -5,35 +5,38 @@ import { useAuth } from '../auth/AuthContext';
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
-  const navItems = [
+  const { logout, user } = useAuth();
+
+  const role = user?.role;
+
+  const landlordNav = [
     {
-    id: 'dashboard',
-    label: 'Dashboard',
+      id: 'dashboard',
+      label: 'Dashboard',
       icon: HomeIcon,
       to: '/dashboard',
     },
     {
-    id: 'properties',
-    label: 'Properties',
+      id: 'properties',
+      label: 'Properties',
       icon: BuildingIcon,
       to: '/properties',
     },
     {
-    id: 'tenants',
-    label: 'Tenants',
+      id: 'tenants',
+      label: 'Tenants',
       icon: UsersIcon,
       to: '/tenants',
     },
     {
-    id: 'payments',
-    label: 'Payments',
+      id: 'payments',
+      label: 'Payments',
       icon: BanknoteIcon,
       to: '/payments',
     },
     {
-    id: 'maintenance',
-    label: 'Maintenance',
+      id: 'maintenance',
+      label: 'Maintenance',
       icon: WrenchIcon,
       to: '/maintenance',
     },
@@ -56,6 +59,63 @@ export const Sidebar = () => {
       to: '/settings',
     },
   ];
+
+  const tenantNav = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: HomeIcon,
+      to: '/tenant-dashboard',
+    },
+    {
+      id: 'payments',
+      label: 'Payments',
+      icon: BanknoteIcon,
+      to: '/payments',
+    },
+    {
+      id: 'maintenance',
+      label: 'Maintenance',
+      icon: WrenchIcon,
+      to: '/maintenance',
+    },
+    {
+      id: 'notifications',
+      label: 'Notifications',
+      icon: BellIcon,
+      to: '/notifications',
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings2Icon,
+      to: '/settings',
+    },
+  ];
+
+  const adminNav = [
+    {
+      id: 'dashboard',
+      label: 'Admin Dashboard',
+      icon: HomeIcon,
+      to: '/admin',
+    },
+    {
+      id: 'notifications',
+      label: 'Notifications',
+      icon: BellIcon,
+      to: '/notifications',
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings2Icon,
+      to: '/settings',
+    },
+  ];
+
+  const navItems = role === 'tenant' ? tenantNav : role === 'admin' ? adminNav : landlordNav;
+
   return (
     <div className="hidden md:flex flex-col w-64 bg-gradient-to-b from-green-50 to-white border-r border-gray-200 min-h-screen shadow-sm">
       <div className="p-6 border-b border-gray-200 flex flex-col items-center">
@@ -68,7 +128,7 @@ export const Sidebar = () => {
       <nav className="flex-1 pt-6">
         <ul className="space-y-1">
           {navItems.map(item => {
-          const Icon = item.icon;
+            const Icon = item.icon;
             return (
               <li key={item.id}>
                 <NavLink
@@ -85,7 +145,7 @@ export const Sidebar = () => {
                 </NavLink>
               </li>
             );
-        })}
+          })}
         </ul>
       </nav>
       <div className="p-4 border-t border-gray-200 mt-4">
