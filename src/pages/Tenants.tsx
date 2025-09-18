@@ -59,64 +59,6 @@ type Tenant = {
   status: TenantStatus;
 };
 
-const initialTenants: Tenant[] = [
-  {
-    id: 1,
-    name: 'John Mwangi',
-    phone: '+254 712 345 678',
-    email: 'john.mwangi@example.com',
-    property: 'Westlands Apartment 3B',
-    moveInDate: '2023-01-15',
-    leaseEnd: '2024-01-14',
-    rent: 45000,
-    status: 'active',
-  },
-  {
-    id: 2,
-    name: 'Sarah Ochieng',
-    phone: '+254 723 456 789',
-    email: 'sarah.ochieng@example.com',
-    property: 'Kilimani Townhouse 7',
-    moveInDate: '2022-11-01',
-    leaseEnd: '2023-10-31',
-    rent: 65000,
-    status: 'ending',
-  },
-  {
-    id: 3,
-    name: 'David Kimani',
-    phone: '+254 734 567 890',
-    email: 'david.kimani@example.com',
-    property: 'Lavington House 12',
-    moveInDate: '2023-02-01',
-    leaseEnd: '2024-01-31',
-    rent: 85000,
-    status: 'active',
-  },
-  {
-    id: 4,
-    name: 'Mary Njeri',
-    phone: '+254 745 678 901',
-    email: 'mary.njeri@example.com',
-    property: 'Karen Cottage 2',
-    moveInDate: '2023-03-15',
-    leaseEnd: '2024-03-14',
-    rent: 55000,
-    status: 'late',
-  },
-  {
-    id: 5,
-    name: 'James Omondi',
-    phone: '+254 756 789 012',
-    email: 'james.omondi@example.com',
-    property: 'Nakuru Apartment 5A',
-    moveInDate: '2023-05-01',
-    leaseEnd: '2024-04-30',
-    rent: 35000,
-    status: 'active',
-  },
-];
-
 // Mock properties data (copy from Properties page, only for demo)
 const mockProperties = [
   {
@@ -165,7 +107,7 @@ const mockProperties = [
 export const Tenants = () => {
   const { token } = useAuth();
   // State
-  const [tenants, setTenants] = useState<Tenant[]>(initialTenants);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortBy, setSortBy] = useState<'name' | 'property' | 'rent' | 'status'>('name');
@@ -196,6 +138,33 @@ export const Tenants = () => {
         if (!res.ok) throw new Error(data?.message || 'Failed to load properties');
         const mapped = (data.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
         if (active) setProperties(mapped);
+      } catch (e: any) {
+        // Optionally handle error
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
+  // Add useEffect to fetch tenants from API on mount
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/tenants', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load tenants');
+        // Map API response to Tenant type
+        const mapped = (data.tenants || []).map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          phone: t.phone,
+          email: t.email,
+          property: `${t.unit?.floor?.property?.name || ''} ${t.unit?.number || ''}`.trim(),
+          moveInDate: t.moveInDate?.slice(0,10) || '',
+          leaseEnd: t.leaseEnd?.slice(0,10) || '',
+          rent: t.unit?.rent || 0,
+          status: t.status || 'active',
+        }));
+        if (active) setTenants(mapped);
       } catch (e: any) {
         // Optionally handle error
       }
