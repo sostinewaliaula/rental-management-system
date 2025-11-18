@@ -20,6 +20,9 @@ PORT=4000
 Install deps, generate Prisma, migrate, and seed:
 ```powershell
 npm install
+
+ npx prisma generate
+ 
 $env:DATABASE_URL="mysql://root:mctm@localhost:3306/rental_mgmt"; npm run prisma:generate
 $env:DATABASE_URL="mysql://root:mctm@localhost:3306/rental_mgmt"; npm run prisma:migrate
 $env:DATABASE_URL="mysql://root:mctm@localhost:3306/rental_mgmt"; npx ts-node --transpile-only prisma/seed.ts
