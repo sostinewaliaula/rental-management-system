@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, HomeIcon, BuildingIcon, WrenchIcon, CheckCircle2Icon, LayersIcon, DoorOpenIcon, User2Icon, ArrowLeftIcon, InfoIcon, BedIcon, SquareIcon, XIcon } from 'lucide-react';
+import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, HomeIcon, BuildingIcon, WrenchIcon, CheckCircle2Icon, LayersIcon, DoorOpenIcon, User2Icon, ArrowLeftIcon, InfoIcon, BedIcon, SquareIcon } from 'lucide-react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { Listbox } from '@headlessui/react';
 import { useAuth } from '../auth/AuthContext';
@@ -37,8 +37,13 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
       onClick={handleBackdropClick}
     >
       <div className="bg-gradient-to-br from-green-50 via-white to-green-100 rounded-3xl shadow-2xl p-6 w-[90vw] min-h-[60vh] max-h-[80vh] max-w-4xl relative animate-fadeIn flex flex-col gap-2 overflow-y-auto border border-green-100">
-        <button onClick={onClose} className="absolute top-6 right-8 text-gray-400 hover:text-green-700 p-2 rounded-full transition-all" aria-label="Close">
-          <XIcon size={22} />
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-6 right-8 bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded transition-all cursor-pointer z-10"
+          aria-label="Close modal"
+        >
+          Close
         </button>
         <h2 className="text-2xl font-extrabold mb-6 text-green-800 text-center tracking-wide leading-tight drop-shadow-sm font-sans">{title}</h2>
         <div className="w-full flex flex-col gap-6 text-base text-gray-800 font-sans">
