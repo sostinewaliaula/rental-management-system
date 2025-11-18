@@ -76,7 +76,8 @@ router.post('/', requireAuth, async (req, res) => {
     });
     res.status(201).json({ property: created });
   } catch (e: any) {
-    res.status(400).json({ message: 'Could not create property' });
+    console.error('Failed to create property', e);
+    res.status(400).json({ message: e?.message || 'Could not create property' });
   }
 });
 
@@ -94,6 +95,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     const existingFloors = await prisma.floor.findMany({ where: { propertyId: id }, select: { id: true } });
     const existingFloorIds = existingFloors.map(f => f.id);
     if (existingFloorIds.length > 0) {
+      const existingUnits = await prisma.unit.findMany({ where: { floorId: { in: existingFloorIds } }, select: { id: true } });
+      const existingUnitIds = existingUnits.map(u => u.id);
+      if (existingUnitIds.length > 0) {
+        await prisma.payment.deleteMany({ where: { unitId: { in: existingUnitIds } } });
+        await prisma.maintenanceRequest.deleteMany({ where: { unitId: { in: existingUnitIds } } });
+        await prisma.tenant.updateMany({ where: { unitId: { in: existingUnitIds } }, data: { unitId: null } });
+      }
       await prisma.unit.deleteMany({ where: { floorId: { in: existingFloorIds } } });
       await prisma.floor.deleteMany({ where: { id: { in: existingFloorIds } } });
     }
@@ -117,7 +125,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     });
     res.json({ property: updated });
   } catch (e: any) {
-    res.status(400).json({ message: 'Could not update property' });
+    console.error(`Failed to update property ${id}`, e);
+    res.status(400).json({ message: e?.message || 'Could not update property' });
   }
 });
 
@@ -129,13 +138,21 @@ router.delete('/:id', requireAuth, async (req, res) => {
     const floors = await prisma.floor.findMany({ where: { propertyId: id }, select: { id: true } });
     const floorIds = floors.map(f => f.id);
     if (floorIds.length > 0) {
+      const units = await prisma.unit.findMany({ where: { floorId: { in: floorIds } }, select: { id: true } });
+      const unitIds = units.map(u => u.id);
+      if (unitIds.length > 0) {
+        await prisma.payment.deleteMany({ where: { unitId: { in: unitIds } } });
+        await prisma.maintenanceRequest.deleteMany({ where: { unitId: { in: unitIds } } });
+        await prisma.tenant.updateMany({ where: { unitId: { in: unitIds } }, data: { unitId: null } });
+      }
       await prisma.unit.deleteMany({ where: { floorId: { in: floorIds } } });
       await prisma.floor.deleteMany({ where: { id: { in: floorIds } } });
     }
     await prisma.property.delete({ where: { id } });
     res.status(204).end();
   } catch (e: any) {
-    res.status(400).json({ message: 'Could not delete property' });
+    console.error(`Failed to delete property ${id}`, e);
+    res.status(400).json({ message: e?.message || 'Could not delete property' });
   }
 });
 

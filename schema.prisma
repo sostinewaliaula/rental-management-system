@@ -33,7 +33,7 @@ model Property {
   name      String
   location  String
   type      String
-  image     String?
+  image     String?  @db.LongText
   floors    Floor[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

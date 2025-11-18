@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, ChangeEvent } from 'react';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, HomeIcon, BuildingIcon, WrenchIcon, CheckCircle2Icon, LayersIcon, DoorOpenIcon, User2Icon, ArrowLeftIcon, InfoIcon, BedIcon, SquareIcon } from 'lucide-react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { Listbox } from '@headlessui/react';
@@ -207,7 +207,12 @@ export const Properties = () => {
     setEditFloors(property.floors.map(f => ({ name: f.name })));
     const unitsObj: { [floorIdx: number]: any[] } = {};
     property.floors.forEach((floor, i) => {
-      unitsObj[i] = floor.units.map(u => ({ type: u.type, number: u.number }));
+      unitsObj[i] = floor.units.map(u => ({
+        type: u.type,
+        number: u.number,
+        rent: u.rent ?? 0,
+        status: u.status || 'vacant',
+      }));
     });
     setEditUnits(unitsObj);
     setEditError('');
@@ -528,6 +533,21 @@ export const Properties = () => {
     }
   };
 
+  const handleImageFileChange = (event: ChangeEvent<HTMLInputElement>, mode: 'add' | 'edit') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (mode === 'add') {
+        setNewProperty((prev: any) => ({ ...prev, image: reader.result as string }));
+      } else if (mode === 'edit') {
+        setEditProperty((prev: any) => (prev ? { ...prev, image: reader.result as string } : prev));
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
   // Edit property modal handlers
   const resetEditModal = () => {
     setEditModalOpen(false);
@@ -555,7 +575,7 @@ export const Properties = () => {
   const handleEditAddUnit = (floorIdx: number) => {
     setEditUnits({
       ...editUnits,
-      [floorIdx]: [...(editUnits[floorIdx] || []), { type: '', number: '', rent: 0 }],
+      [floorIdx]: [...(editUnits[floorIdx] || []), { type: '', number: '', rent: 0, status: 'vacant' }],
     });
   };
   const handleEditRemoveUnit = (floorIdx: number, unitIdx: number) => {
@@ -566,7 +586,7 @@ export const Properties = () => {
   };
   const handleEditUnitChange = (floorIdx: number, unitIdx: number, field: string, value: string) => {
     const updated = [...(editUnits[floorIdx] || [])];
-    updated[unitIdx][field] = value;
+    updated[unitIdx][field] = field === 'rent' ? Number(value) : value;
     setEditUnits({ ...editUnits, [floorIdx]: updated });
   };
   const handleEditSubmit = (e: React.FormEvent) => {
@@ -584,7 +604,12 @@ export const Properties = () => {
           image: editProperty.image,
           floors: editFloors.map((floor, idx) => ({
             name: floor.name,
-            units: (editUnits[idx] || []).map((u: any) => ({ number: u.number, type: u.type, rent: Number(u.rent) || 0, status: 'vacant' })),
+            units: (editUnits[idx] || []).map((u: any) => ({
+              number: u.number,
+              type: u.type,
+              rent: Number(u.rent) || 0,
+              status: u.status || 'vacant',
+            })),
           })),
         };
         const res = await fetch(`/api/properties/${editProperty.id}`, {
@@ -771,6 +796,15 @@ export const Properties = () => {
             <div>
               <label className="block text-sm font-semibold mb-1">Image URL</label>
               <input className="w-full border rounded-lg px-3 py-2" value={newProperty.image} onChange={e => setNewProperty({ ...newProperty, image: e.target.value })} />
+              <div className="mt-2">
+                <label className="block text-sm font-semibold mb-1">Upload Image</label>
+                <input type="file" accept="image/*" onChange={e => handleImageFileChange(e, 'add')} className="w-full border rounded-lg px-3 py-2 bg-white" />
+              </div>
+              {newProperty.image && (
+                <div className="mt-2">
+                  <img src={newProperty.image} alt="Property preview" className="h-32 w-full object-cover rounded-xl border border-green-100 shadow" />
+                </div>
+              )}
             </div>
           </div>
           <div className="text-lg font-bold text-green-800 mt-6 mb-2">Floors</div>
@@ -869,6 +903,15 @@ export const Properties = () => {
               <div>
                 <label className="block text-sm font-semibold mb-1">Image URL</label>
                 <input className="w-full border rounded-lg px-3 py-2" value={editProperty.image} onChange={e => setEditProperty({ ...editProperty, image: e.target.value })} />
+                <div className="mt-2">
+                  <label className="block text-sm font-semibold mb-1">Upload Image</label>
+                  <input type="file" accept="image/*" onChange={e => handleImageFileChange(e, 'edit')} className="w-full border rounded-lg px-3 py-2 bg-white" />
+                </div>
+                {editProperty.image && (
+                  <div className="mt-2">
+                    <img src={editProperty.image} alt="Property preview" className="h-32 w-full object-cover rounded-xl border border-green-100 shadow" />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -924,7 +967,7 @@ export const Properties = () => {
                           </Listbox>
                         </div>
                         <input className="border rounded-lg px-2 py-1 w-32" placeholder="Unit Name" value={unit.number} onChange={e => handleEditUnitChange(idx, uidx, 'number', e.target.value)} required />
-                        <input className="border rounded-lg px-2 py-1 w-24" type="number" min="0" placeholder="Rent" value={unit.rent || ''} onChange={e => handleEditUnitChange(idx, uidx, 'rent', e.target.value)} required />
+                        <input className="border rounded-lg px-2 py-1 w-24" type="number" min="0" placeholder="Rent" value={unit.rent ?? ''} onChange={e => handleEditUnitChange(idx, uidx, 'rent', e.target.value)} required />
                         {/* Status is always 'vacant' by default; no dropdown */}
                         <button type="button" className="ml-2 text-red-600 hover:text-red-800 font-bold" onClick={() => handleEditRemoveUnit(idx, uidx)}>&times;</button>
                       </div>
