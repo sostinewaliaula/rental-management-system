@@ -1,6 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { User2Icon, MailIcon, PhoneIcon, LockIcon, KeyIcon, BellIcon, SmartphoneIcon, BuildingIcon, ImageIcon, CheckCircle2Icon, AlertCircleIcon, Trash2Icon, UploadIcon, EyeIcon, ShieldCheckIcon } from 'lucide-react';
+import { User2Icon, KeyIcon, BellIcon, SmartphoneIcon, ImageIcon, Trash2Icon, UploadIcon, ShieldCheckIcon } from 'lucide-react';
+
+type NotificationPrefs = { email: boolean; sms: boolean; push: boolean };
+type OrganizationInfo = { name: string; address: string; logo: string };
+type ProfileInfo = { id?: number; avatar: string; name: string; email: string; phone: string };
+type SettingsResponse = {
+  profile: ProfileInfo;
+  notifications: NotificationPrefs;
+  organization: OrganizationInfo;
+  twoFactorEnabled: boolean;
+};
+
+const notificationDefaults: NotificationPrefs = { email: true, sms: false, push: true };
+
+const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result as string);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
 
 // Modal component (copied/adapted)
 interface ModalProps {
@@ -25,6 +44,8 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
     }
   };
   if (!open) return null;
+  const avatarPreview = profileEdit ? profileDraft.avatar || profile.avatar : profile.avatar;
+
   return (
     <div
       ref={modalRef}
@@ -44,35 +65,144 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
 
 export const Settings = () => {
   const { token, user, login } = useAuth();
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Profile state
-  const [profile, setProfile] = useState({
+  const [profile, setProfile] = useState<ProfileInfo>({
     avatar: '',
     name: '',
     email: '',
     phone: '',
   });
   const [profileEdit, setProfileEdit] = useState(false);
-  const [profileDraft, setProfileDraft] = useState(profile);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [profileDraft, setProfileDraft] = useState<ProfileInfo>({
+    avatar: '',
+    name: '',
+    email: '',
+    phone: '',
+  });
+  const profileEditRef = useRef(profileEdit);
+  useEffect(() => {
+    profileEditRef.current = profileEdit;
+  }, [profileEdit]);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Account state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [passwordDraft, setPasswordDraft] = useState({ current: '', new: '', confirm: '' });
-  const [twoFA, setTwoFA] = useState(true);
+  const [twoFA, setTwoFA] = useState(false);
+  const [savingTwoFA, setSavingTwoFA] = useState(false);
 
   // Notifications state
-  const [notifications, setNotifications] = useState({ email: true, sms: false, push: true });
+  const [notifications, setNotifications] = useState<NotificationPrefs>(notificationDefaults);
+  const [savingNotifications, setSavingNotifications] = useState(false);
 
   // Organization state
-  const [org, setOrg] = useState({
-    name: 'Nyumbani Rentals',
-    address: '123 Riverside Drive, Nairobi',
+  const [org, setOrg] = useState<OrganizationInfo>({
+    name: '',
+    address: '',
     logo: '',
   });
   const [orgEdit, setOrgEdit] = useState(false);
-  const [orgDraft, setOrgDraft] = useState(org);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [orgDraft, setOrgDraft] = useState<OrganizationInfo>({ name: '', address: '', logo: '' });
+  const orgEditRef = useRef(orgEdit);
+  useEffect(() => {
+    orgEditRef.current = orgEdit;
+  }, [orgEdit]);
+  const [savingOrg, setSavingOrg] = useState(false);
+
+  const clearStatusMessage = useCallback(() => {
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
+    }
+    setStatusMessage(null);
+  }, []);
+
+  useEffect(() => () => {
+    clearStatusMessage();
+  }, [clearStatusMessage]);
+
+  const showStatusMessage = useCallback((message: string) => {
+    clearStatusMessage();
+    setStatusMessage(message);
+    statusTimeoutRef.current = setTimeout(() => {
+      clearStatusMessage();
+    }, 4000);
+  }, [clearStatusMessage]);
+
+  const applySettingsResponse = useCallback((payload: SettingsResponse) => {
+    if (!payload) return;
+    const profileData: ProfileInfo = {
+      avatar: payload.profile?.avatar || '',
+      name: payload.profile?.name || '',
+      email: payload.profile?.email || '',
+      phone: payload.profile?.phone || '',
+    };
+    setProfile(profileData);
+    if (!profileEditRef.current) {
+      setProfileDraft(profileData);
+    }
+    const notificationData: NotificationPrefs = payload.notifications || notificationDefaults;
+    setNotifications(notificationData);
+    const orgData: OrganizationInfo = {
+      name: payload.organization?.name || '',
+      address: payload.organization?.address || '',
+      logo: payload.organization?.logo || '',
+    };
+    setOrg(orgData);
+    if (!orgEditRef.current) {
+      setOrgDraft(orgData);
+    }
+    setTwoFA(Boolean(payload.twoFactorEnabled));
+  }, []);
+
+  const handleAvatarUpload = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setProfileDraft(prev => ({ ...prev, avatar: dataUrl }));
+    } catch {
+      clearStatusMessage();
+      setErrorMessage('Unable to read avatar image.');
+    }
+  };
+
+  const handleLogoUpload = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setOrgDraft(prev => ({ ...prev, logo: dataUrl }));
+    } catch {
+      clearStatusMessage();
+      setErrorMessage('Unable to read logo image.');
+    }
+  };
+
+  const callUpdateSettings = useCallback(async (payload: Record<string, unknown>, successMessage?: string) => {
+    if (!token) throw new Error('Missing authentication token');
+    const res = await fetch('/api/auth/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.message || 'Failed to update settings');
+    }
+    applySettingsResponse(data as SettingsResponse);
+    setErrorMessage(null);
+    if (successMessage) {
+      showStatusMessage(successMessage);
+    }
+    return data as SettingsResponse;
+  }, [token, applySettingsResponse, showStatusMessage]);
 
   // Security state
   const [devices, setDevices] = useState([
@@ -83,25 +213,120 @@ export const Settings = () => {
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [deviceToRemove, setDeviceToRemove] = useState<any>(null);
 
-  // Load current user profile
+  // Load current user settings
   useEffect(() => {
+    if (!token) return;
+    let active = true;
     (async () => {
+      setLoadingSettings(true);
       try {
-        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (res.ok) {
-          setProfile(p => ({ ...p, name: data.user.name, email: data.user.email }));
+        const res = await fetch('/api/auth/settings', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Failed to load settings');
+        const data = (await res.json()) as SettingsResponse;
+        if (active) {
+          applySettingsResponse(data);
+          setErrorMessage(null);
         }
-      } catch {}
+      } catch {
+        if (active) setErrorMessage('Unable to load settings at the moment.');
+      } finally {
+        if (active) setLoadingSettings(false);
+      }
     })();
-  }, [token]);
+    return () => {
+      active = false;
+    };
+  }, [token, applySettingsResponse]);
+
+  const handleProfileSave = async () => {
+    if (!profileDraft.name || !profileDraft.email) {
+      setErrorMessage('Name and email are required.');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const response = await callUpdateSettings(
+        { name: profileDraft.name, email: profileDraft.email, phone: profileDraft.phone, avatar: profileDraft.avatar },
+        'Profile updated successfully.'
+      );
+      setProfileEdit(false);
+      if (token && user) {
+        login(token, { ...user, name: response.profile.name, email: response.profile.email });
+      }
+    } catch (err: any) {
+      clearStatusMessage();
+      setErrorMessage(err.message || 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleNotificationChange = async (key: keyof NotificationPrefs, value: boolean) => {
+    const previous = { ...notifications };
+    const updated = { ...notifications, [key]: value };
+    setNotifications(updated);
+    setSavingNotifications(true);
+    try {
+      await callUpdateSettings({ notifications: updated }, 'Notification preferences updated.');
+    } catch (err: any) {
+      clearStatusMessage();
+      setNotifications(previous);
+      setErrorMessage(err.message || 'Failed to update notification preferences.');
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const handleOrgSave = async () => {
+    setSavingOrg(true);
+    try {
+      await callUpdateSettings({ organization: orgDraft }, 'Organization details updated.');
+      setOrgEdit(false);
+    } catch (err: any) {
+      clearStatusMessage();
+      setErrorMessage(err.message || 'Failed to update organization information.');
+    } finally {
+      setSavingOrg(false);
+    }
+  };
+
+  const handleTwoFAToggle = async () => {
+    const next = !twoFA;
+    setTwoFA(next);
+    setSavingTwoFA(true);
+    try {
+      await callUpdateSettings({ twoFactorEnabled: next }, next ? 'Two-factor authentication enabled.' : 'Two-factor authentication disabled.');
+    } catch (err: any) {
+      clearStatusMessage();
+      setTwoFA(!next);
+      setErrorMessage(err.message || 'Failed to update 2FA status.');
+    } finally {
+      setSavingTwoFA(false);
+    }
+  };
 
   // Summary stats
-  const profileComplete = profile.name && profile.email && profile.phone && profile.avatar;
+  const profileComplete = Boolean(profile.name && profile.email && profile.phone);
   const notificationsEnabled = notifications.email || notifications.sms || notifications.push;
+  const avatarPreview = profileEdit ? (profileDraft.avatar || profile.avatar) : profile.avatar;
 
   return (
     <div>
+      {statusMessage && (
+        <div className="mb-6 rounded-xl border border-green-100 bg-green-50 p-4 text-green-700">
+          {statusMessage}
+        </div>
+      )}
+      {errorMessage && (
+        <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4 text-red-700">
+          {errorMessage}
+        </div>
+      )}
+      {loadingSettings && (
+        <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4 text-blue-700">
+          Loading your settings...
+        </div>
+      )}
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-100 flex flex-col items-center transition-all duration-200 hover:scale-105 hover:shadow-2xl cursor-pointer" style={{ boxShadow: '0 2px 8px 0 rgba(34,197,94,0.08)' }}>
@@ -129,8 +354,8 @@ export const Settings = () => {
       <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-8 mb-8">
         <div className="flex items-center gap-6 mb-6">
           <div className="relative w-20 h-20">
-            {profile.avatar ? (
-              <img src={profile.avatar} alt="avatar" className="w-20 h-20 rounded-full object-cover border-2 border-green-200 shadow" />
+            {avatarPreview ? (
+              <img src={avatarPreview} alt="avatar" className="w-20 h-20 rounded-full object-cover border-2 border-green-200 shadow" />
             ) : (
               <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center text-green-700 text-3xl font-bold border-2 border-green-200 shadow">
                 <User2Icon size={36} />
@@ -139,22 +364,49 @@ export const Settings = () => {
             {profileEdit && (
               <label className="absolute bottom-0 right-0 bg-green-700 text-white rounded-full p-2 cursor-pointer hover:bg-green-800 transition-all shadow-lg">
                 <UploadIcon size={16} />
-                <input type="file" className="hidden" accept="image/*" onChange={e => setAvatarFile(e.target.files?.[0] || null)} />
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  onChange={e => handleAvatarUpload(e.target.files?.[0] || null)}
+                />
               </label>
             )}
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <h2 className="text-xl font-bold text-gray-800">Profile</h2>
-              {!profileEdit && <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={() => { setProfileEdit(true); setProfileDraft(profile); }}>Edit</button>}
+              {!profileEdit && (
+                <button
+                  className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm"
+                  onClick={() => {
+                    clearStatusMessage();
+                    setErrorMessage(null);
+                    setProfileDraft(profile);
+                    setProfileEdit(true);
+                  }}
+                >
+                  Edit
+                </button>
+              )}
               {profileEdit && (
                 <>
-                  <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={async () => {
-                    // In a real app, call backend to update profile fields if supported
-                    setProfile(profileDraft);
-                    setProfileEdit(false);
-                  }}>Save</button>
-                  <button className="ml-2 px-3 py-1 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" onClick={() => setProfileEdit(false)}>Cancel</button>
+                  <button
+                    className={`ml-2 px-3 py-1 rounded-lg text-sm ${savingProfile ? 'bg-green-300 cursor-not-allowed text-white' : 'bg-green-700 text-white hover:bg-green-800'}`}
+                    onClick={handleProfileSave}
+                    disabled={savingProfile}
+                  >
+                    {savingProfile ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    className="ml-2 px-3 py-1 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
+                    onClick={() => {
+                      setProfileDraft(profile);
+                      setProfileEdit(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
                 </>
               )}
             </div>
@@ -194,7 +446,13 @@ export const Settings = () => {
         </div>
         <div className="flex flex-col md:flex-row gap-4">
           <button className="bg-blue-700 hover:bg-blue-800 text-white py-2 px-4 rounded-lg flex items-center gap-2" onClick={() => setShowPasswordModal(true)}><KeyIcon size={18} /> Change Password</button>
-          <button className={`py-2 px-4 rounded-lg flex items-center gap-2 ${twoFA ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`} onClick={() => setTwoFA(v => !v)}><ShieldCheckIcon size={18} /> {twoFA ? 'Disable 2FA' : 'Enable 2FA'}</button>
+          <button
+            className={`py-2 px-4 rounded-lg flex items-center gap-2 ${twoFA ? 'bg-green-700 text-white hover:bg-green-800' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+            onClick={handleTwoFAToggle}
+            disabled={savingTwoFA}
+          >
+            <ShieldCheckIcon size={18} /> {savingTwoFA ? 'Updating...' : twoFA ? 'Disable 2FA' : 'Enable 2FA'}
+          </button>
           <button className="bg-red-700 hover:bg-red-800 text-white py-2 px-4 rounded-lg flex items-center gap-2" onClick={() => setShowDeleteModal(true)}><Trash2Icon size={18} /> Delete Account</button>
         </div>
       </div>
@@ -205,28 +463,76 @@ export const Settings = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex items-center gap-3">
-            <input type="checkbox" id="notifEmail" checked={notifications.email} onChange={e => setNotifications(n => ({ ...n, email: e.target.checked }))} className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500" />
+            <input
+              type="checkbox"
+              id="notifEmail"
+              checked={notifications.email}
+              disabled={savingNotifications}
+              onChange={e => handleNotificationChange('email', e.target.checked)}
+              className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+            />
             <label htmlFor="notifEmail" className="text-gray-700">Email</label>
           </div>
           <div className="flex items-center gap-3">
-            <input type="checkbox" id="notifSMS" checked={notifications.sms} onChange={e => setNotifications(n => ({ ...n, sms: e.target.checked }))} className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500" />
+            <input
+              type="checkbox"
+              id="notifSMS"
+              checked={notifications.sms}
+              disabled={savingNotifications}
+              onChange={e => handleNotificationChange('sms', e.target.checked)}
+              className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+            />
             <label htmlFor="notifSMS" className="text-gray-700">SMS</label>
           </div>
           <div className="flex items-center gap-3">
-            <input type="checkbox" id="notifPush" checked={notifications.push} onChange={e => setNotifications(n => ({ ...n, push: e.target.checked }))} className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500" />
+            <input
+              type="checkbox"
+              id="notifPush"
+              checked={notifications.push}
+              disabled={savingNotifications}
+              onChange={e => handleNotificationChange('push', e.target.checked)}
+              className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+            />
             <label htmlFor="notifPush" className="text-gray-700">Push</label>
           </div>
         </div>
+        {savingNotifications && <p className="text-sm text-gray-500 mt-3">Saving notification preferences...</p>}
       </div>
       {/* Organization Section */}
       <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-8 mb-8">
         <div className="flex items-center gap-2 mb-4">
           <h2 className="text-xl font-bold text-gray-800">Organization</h2>
-          {!orgEdit && <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={() => { setOrgEdit(true); setOrgDraft(org); }}>Edit</button>}
+          {!orgEdit && (
+            <button
+              className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm"
+              onClick={() => {
+                clearStatusMessage();
+                setErrorMessage(null);
+                setOrgDraft(org);
+                setOrgEdit(true);
+              }}
+            >
+              Edit
+            </button>
+          )}
           {orgEdit && (
             <>
-              <button className="ml-2 px-3 py-1 rounded-lg bg-green-700 text-white hover:bg-green-800 text-sm" onClick={() => { setOrg(orgDraft); setOrgEdit(false); }}>Save</button>
-              <button className="ml-2 px-3 py-1 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm" onClick={() => setOrgEdit(false)}>Cancel</button>
+              <button
+                className={`ml-2 px-3 py-1 rounded-lg text-sm ${savingOrg ? 'bg-green-300 cursor-not-allowed text-white' : 'bg-green-700 text-white hover:bg-green-800'}`}
+                onClick={handleOrgSave}
+                disabled={savingOrg}
+              >
+                {savingOrg ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                className="ml-2 px-3 py-1 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 text-sm"
+                onClick={() => {
+                  setOrgEdit(false);
+                  setOrgDraft(org);
+                }}
+              >
+                Cancel
+              </button>
             </>
           )}
         </div>
@@ -252,7 +558,12 @@ export const Settings = () => {
             {orgEdit ? (
               <label className="flex items-center gap-2 cursor-pointer">
                 <UploadIcon size={18} />
-                <input type="file" className="hidden" accept="image/*" onChange={e => setLogoFile(e.target.files?.[0] || null)} />
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  onChange={e => handleLogoUpload(e.target.files?.[0] || null)}
+                />
                 <span className="text-gray-500">Upload Logo</span>
               </label>
             ) : (
@@ -299,11 +610,18 @@ export const Settings = () => {
           try {
             const res = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ currentPassword: passwordDraft.current, newPassword: passwordDraft.new }) });
             const data = await res.json();
-            if (res.ok) {
-              setShowPasswordModal(false);
-              setPasswordDraft({ current: '', new: '', confirm: '' });
+            if (!res.ok) {
+              clearStatusMessage();
+              setErrorMessage(data?.message || 'Failed to change password.');
+              return;
             }
-          } catch {}
+            setShowPasswordModal(false);
+            setPasswordDraft({ current: '', new: '', confirm: '' });
+            showStatusMessage('Password updated successfully.');
+          } catch {
+            clearStatusMessage();
+            setErrorMessage('Unable to update password right now.');
+          }
         }}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>

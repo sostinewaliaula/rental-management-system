@@ -15,6 +15,13 @@ model User {
   email     String   @unique
   password  String
   role      String   // 'landlord', 'manager', 'tenant', etc.
+  phone     String?
+  avatar    String?
+  twoFactorEnabled Boolean @default(false)
+  notificationPreferences Json?
+  organizationName    String?
+  organizationAddress String?
+  organizationLogo    String?
   tenants   Tenant[]
   notifications Notification[]
   createdAt DateTime @default(now())
