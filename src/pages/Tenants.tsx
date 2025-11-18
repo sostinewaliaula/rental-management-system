@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { ColumnDef, getCoreRowModel, getSortedRowModel, getPaginationRowModel, flexRender, useReactTable } from '@tanstack/react-table';
 import { PlusIcon, SearchIcon, FilterIcon, EyeIcon, PencilIcon, Trash2Icon, User2Icon, HomeIcon, CalendarIcon, MailIcon, PhoneIcon, CheckCircle2Icon, AlertCircleIcon, ArrowLeftIcon, KeyIcon } from 'lucide-react';
 import { Listbox } from '@headlessui/react';
@@ -58,56 +58,12 @@ type Tenant = {
   phone: string;
   email: string;
   property: string;
+  unitId: number | null;
   moveInDate: string;
   leaseEnd: string;
   rent: number;
   status: TenantStatus;
 };
-
-// Mock properties data (copy from Properties page, only for demo)
-const mockProperties = [
-  {
-    id: 1,
-    name: 'Westlands Apartment',
-    image: '',
-    location: 'Westlands, Nairobi',
-    type: 'Apartment',
-    floors: [
-      {
-        id: 1,
-        name: 'Ground Floor',
-        units: [
-          { id: 1, type: 'one bedroom', number: 'G1', status: 'vacant', rent: 45000 },
-          { id: 2, type: 'studio', number: 'G2', status: 'vacant', rent: 30000 },
-        ],
-      },
-      {
-        id: 2,
-        name: 'First Floor',
-        units: [
-          { id: 3, type: 'two bedroom', number: '1A', status: 'vacant', rent: 60000 },
-          { id: 4, type: 'bedsitter', number: '1B', status: 'vacant', rent: 25000 },
-        ],
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Kilimani Townhouse',
-    image: '',
-    location: 'Kilimani, Nairobi',
-    type: 'Townhouse',
-    floors: [
-      {
-        id: 1,
-        name: 'Ground Floor',
-        units: [
-          { id: 5, type: 'three bedroom', number: 'G1', status: 'vacant', rent: 80000 },
-        ],
-      },
-    ],
-  },
-];
 
 export const Tenants = () => {
   const { token } = useAuth();
@@ -127,80 +83,111 @@ export const Tenants = () => {
   const [deleteTenant, setDeleteTenant] = useState<Tenant | null>(null);
   const [formError, setFormError] = useState('');
   const [showCredentials, setShowCredentials] = useState<{email: string, password: string} | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   // Properties/units from API
   const [properties, setProperties] = useState<any[]>([]);
-  // For Add/Edit Tenant: selected unitId
-  const [selectedUnitId, setSelectedUnitId] = useState<number | null>(null);
-
-  // Fetch properties on mount
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message || 'Failed to load properties');
-        const mapped = (data.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
-        if (active) setProperties(mapped);
-      } catch (e: any) {
-        // Optionally handle error
-      }
-    })();
-    return () => { active = false; };
+  const [addSelectedUnitId, setAddSelectedUnitId] = useState<number | null>(null);
+  const [editSelectedUnitId, setEditSelectedUnitId] = useState<number | null>(null);
+  const mapTenantRecord = useCallback((t: any): Tenant => ({
+    id: t.id,
+    name: t.name,
+    phone: t.phone,
+    email: t.email,
+    property: `${t.unit?.floor?.property?.name || ''} ${t.unit?.number || ''}`.trim(),
+    unitId: t.unit?.id ?? null,
+    moveInDate: t.moveInDate?.slice(0,10) || '',
+    leaseEnd: t.leaseEnd?.slice(0,10) || '',
+    rent: t.unit?.rent || 0,
+    status: t.status || 'active',
+  }), []);
+  const loadProperties = useCallback(async () => {
+    const res = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || 'Failed to load properties');
+    return (data.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
   }, [token]);
-  // Add useEffect to fetch tenants from API on mount
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/tenants', { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.message || 'Failed to load tenants');
-        // Map API response to Tenant type
-        const mapped = (data.tenants || []).map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          phone: t.phone,
-          email: t.email,
-          property: `${t.unit?.floor?.property?.name || ''} ${t.unit?.number || ''}`.trim(),
-          moveInDate: t.moveInDate?.slice(0,10) || '',
-          leaseEnd: t.leaseEnd?.slice(0,10) || '',
-          rent: t.unit?.rent || 0,
-          status: t.status || 'active',
-        }));
-        if (active) setTenants(mapped);
-      } catch (e: any) {
-        // Optionally handle error
-      }
-    })();
-    return () => { active = false; };
-  }, [token]);
-  // Helper: get all vacant units grouped by property/floor
-  const vacantUnits = useMemo(() => {
-    const result: Array<{ property: any; floor: any; unit: any }> = [];
+  const loadTenants = useCallback(async () => {
+    const res = await fetch('/api/tenants', { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || 'Failed to load tenants');
+    return (data.tenants || []).map(mapTenantRecord);
+  }, [token, mapTenantRecord]);
+  const findUnitDetails = useCallback((unitId: number | null) => {
+    if (unitId == null) return null;
     for (const property of properties) {
-      for (const floor of property.floors) {
-        for (const unit of floor.units) {
-          if (unit.status === 'vacant') result.push({ property, floor, unit });
-        }
-      }
-    }
-    return result;
-  }, [properties]);
-  // Helper: get selected unit details
-  const selectedUnit = useMemo(() => {
-    for (const property of properties) {
-      for (const floor of property.floors) {
-        for (const unit of floor.units) {
-          if (unit.id === selectedUnitId) {
+      for (const floor of property.floors || []) {
+        for (const unit of floor.units || []) {
+          if (unit.id === unitId) {
             return { property, floor, unit };
           }
         }
       }
     }
     return null;
-  }, [properties, selectedUnitId]);
+  }, [properties]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await loadProperties();
+        if (active) setProperties(data);
+      } catch (e) {
+        // noop
+      }
+    })();
+    return () => { active = false; };
+  }, [loadProperties]);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await loadTenants();
+        if (active) setTenants(data);
+      } catch (e) {
+        // noop
+      }
+    })();
+    return () => { active = false; };
+  }, [loadTenants]);
+  useEffect(() => {
+    setDeleteError('');
+  }, [deleteTenant]);
+  // Helper: get all vacant units grouped by property/floor
+  const vacantUnits = useMemo(() => {
+    const result: Array<{ property: any; floor: any; unit: any }> = [];
+    for (const property of properties) {
+      for (const floor of property.floors || []) {
+        for (const unit of floor.units || []) {
+          if (unit.status === 'vacant') result.push({ property, floor, unit });
+        }
+      }
+    }
+    return result;
+  }, [properties]);
+  const addSelectedUnit = useMemo(() => findUnitDetails(addSelectedUnitId), [findUnitDetails, addSelectedUnitId]);
+  const editUnitDetails = useMemo(() => findUnitDetails(editSelectedUnitId), [findUnitDetails, editSelectedUnitId]);
+  const currentEditUnit = useMemo(() => findUnitDetails(editTenant?.unitId ?? null), [findUnitDetails, editTenant]);
+  const reassignOptions = useMemo(() => {
+    const options: Array<{ label: string; value: number; isCurrent?: boolean }> = [];
+    if (currentEditUnit) {
+      options.push({
+        label: `${currentEditUnit.property.name} / ${currentEditUnit.floor.name} / ${currentEditUnit.unit.number} (current)`,
+        value: currentEditUnit.unit.id,
+        isCurrent: true,
+      });
+    }
+    vacantUnits.forEach(({ property, floor, unit }) => {
+      if (!currentEditUnit || unit.id !== currentEditUnit.unit.id) {
+        options.push({
+          label: `${property.name} / ${floor.name} / ${unit.number} (${unit.type}, KES ${unit.rent.toLocaleString()})`,
+          value: unit.id,
+        });
+      }
+    });
+    return options;
+  }, [vacantUnits, currentEditUnit]);
 
   // Filtering, sorting, pagination
   const filteredTenants = useMemo(() => {
@@ -339,11 +326,12 @@ export const Tenants = () => {
         leaseEnd: editTenant.leaseEnd,
         status: editTenant.status,
       });
-      setSelectedUnitId(null); // Editing: don't allow changing unit
+      setEditSelectedUnitId(editTenant.unitId ?? null);
       setFormError('');
     } else if (!addModalOpen) {
       setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
-      setSelectedUnitId(null);
+      setAddSelectedUnitId(null);
+      setEditSelectedUnitId(null);
       setFormError('');
     }
   }, [editTenant, addModalOpen]);
@@ -355,7 +343,7 @@ export const Tenants = () => {
   // Add handler: assign tenant to unit, mark unit as occupied
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTenant.name || !formTenant.phone || !formTenant.email || !formTenant.moveInDate || !formTenant.leaseEnd || !selectedUnit) {
+    if (!formTenant.name || !formTenant.phone || !formTenant.email || !formTenant.moveInDate || !formTenant.leaseEnd || !addSelectedUnit) {
       setFormError('Please fill all required fields and select a unit.');
       return;
     }
@@ -369,33 +357,17 @@ export const Tenants = () => {
           phone: formTenant.phone,
           moveInDate: formTenant.moveInDate,
           leaseEnd: formTenant.leaseEnd,
-          unitId: selectedUnit.unit.id,
+          unitId: addSelectedUnit.unit.id,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Failed to add tenant');
-      setTenants(prev => [
-        {
-          id: data.tenant.id,
-          name: data.tenant.name,
-          email: data.tenant.email,
-          phone: data.tenant.phone,
-          moveInDate: data.tenant.moveInDate?.slice(0,10),
-          leaseEnd: data.tenant.leaseEnd?.slice(0,10),
-          property: `${data.tenant.unit.floor.property.name} ${data.tenant.unit.number}`,
-          rent: data.tenant.unit.rent || 0,
-          status: 'active',
-        },
-        ...prev,
-      ]);
-      // Refresh properties (to update unit status)
-      const ref = await fetch('/api/properties', { headers: { Authorization: `Bearer ${token}` } });
-      const refData = await ref.json();
-      const mapped = (refData.properties || []).map((p: any) => ({ ...p, floors: p.floors || [] }));
-      setProperties(mapped);
+      const [propsData, tenantsData] = await Promise.all([loadProperties(), loadTenants()]);
+      setProperties(propsData);
+      setTenants(tenantsData);
       setAddModalOpen(false);
       setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
-      setSelectedUnitId(null);
+      setAddSelectedUnitId(null);
       setFormError('');
       setShowCredentials({ email: data.credentials.email, password: data.credentials.password });
     } catch (err: any) {
@@ -419,47 +391,38 @@ export const Tenants = () => {
           moveInDate: formTenant.moveInDate,
           leaseEnd: formTenant.leaseEnd,
           status: formTenant.status,
+          unitId: editSelectedUnitId ?? undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || 'Failed to update tenant');
-      // Refresh tenants list
-      const ref = await fetch('/api/tenants', { headers: { Authorization: `Bearer ${token}` } });
-      const refData = await ref.json();
-      const mapped = (refData.tenants || []).map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        phone: t.phone,
-        email: t.email,
-        property: `${t.unit?.floor?.property?.name || ''} ${t.unit?.number || ''}`.trim(),
-        moveInDate: t.moveInDate?.slice(0,10) || '',
-        leaseEnd: t.leaseEnd?.slice(0,10) || '',
-        rent: t.unit?.rent || 0,
-        status: t.status || 'active',
-      }));
-      setTenants(mapped);
+      const [propsData, tenantsData] = await Promise.all([loadProperties(), loadTenants()]);
+      setProperties(propsData);
+      setTenants(tenantsData);
       setEditTenant(null);
       setFormTenant({ name: '', phone: '', email: '', moveInDate: '', leaseEnd: '', status: 'active' });
+      setEditSelectedUnitId(null);
       setFormError('');
     } catch (err: any) {
       setFormError(err.message);
     }
   };
-  // Delete handler: mark unit as vacant
-  const handleDelete = () => {
-    if (deleteTenant) {
-      // Find the unit and mark as vacant
-      setProperties(prevProps => prevProps.map(p => ({
-        ...p,
-        floors: p.floors.map(f => ({
-          ...f,
-          units: f.units.map(u =>
-            u.tenant && u.tenant.id === deleteTenant.id ? { ...u, status: 'vacant', tenant: undefined } : u
-          ),
-        })),
-      })));
-      setTenants(prev => prev.filter(t => t.id !== deleteTenant.id));
+  // Delete handler with API call
+  const handleDelete = async () => {
+    if (!deleteTenant) return;
+    try {
+      setDeleteError('');
+      const res = await fetch(`/api/tenants/${deleteTenant.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      if (res.status !== 204) {
+        const data = await res.json();
+        throw new Error(data?.message || 'Failed to delete tenant');
+      }
+      const [propsData, tenantsData] = await Promise.all([loadProperties(), loadTenants()]);
+      setProperties(propsData);
+      setTenants(tenantsData);
       setDeleteTenant(null);
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete tenant');
     }
   };
 
@@ -637,11 +600,11 @@ export const Tenants = () => {
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold mb-1">Assign Unit *</label>
-              <Listbox value={selectedUnitId} onChange={setSelectedUnitId}>
+              <Listbox value={addSelectedUnitId} onChange={setAddSelectedUnitId}>
                 <div className="relative mt-1">
                   <Listbox.Button className="w-full border rounded-lg px-3 py-2 text-left">
-                    {selectedUnit ? (
-                      <span>{selectedUnit.property.name} / {selectedUnit.floor.name} / {selectedUnit.unit.number} ({selectedUnit.unit.type}, KES {selectedUnit.unit.rent.toLocaleString()})</span>
+                    {addSelectedUnit ? (
+                      <span>{addSelectedUnit.property.name} / {addSelectedUnit.floor.name} / {addSelectedUnit.unit.number} ({addSelectedUnit.unit.type}, KES {addSelectedUnit.unit.rent.toLocaleString()})</span>
                     ) : (
                       <span className="text-gray-400">Select a vacant unit...</span>
                     )}
@@ -666,19 +629,19 @@ export const Tenants = () => {
                 </div>
               </Listbox>
             </div>
-            {selectedUnit && (
+            {addSelectedUnit && (
               <>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Property</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={selectedUnit.property.name} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={addSelectedUnit.property.name} readOnly />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Unit</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={selectedUnit.unit.number} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={addSelectedUnit.unit.number} readOnly />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Rent (KES)</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={selectedUnit.unit.rent.toLocaleString()} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={addSelectedUnit.unit.rent.toLocaleString()} readOnly />
                 </div>
               </>
             )}
@@ -713,20 +676,49 @@ export const Tenants = () => {
               <label className="block text-sm font-semibold mb-1">Lease End *</label>
               <input className="w-full border rounded-lg px-3 py-2" type="date" value={formTenant.leaseEnd} onChange={e => setFormTenant({ ...formTenant, leaseEnd: e.target.value })} required />
             </div>
-            {/* Read-only property/unit/rent fields for edit */}
-            {editTenant && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold mb-1">Reassign Unit</label>
+              <Listbox value={editSelectedUnitId} onChange={setEditSelectedUnitId}>
+                <div className="relative mt-1">
+                  <Listbox.Button className="w-full border rounded-lg px-3 py-2 text-left">
+                    {editUnitDetails ? (
+                      <span>{editUnitDetails.property.name} / {editUnitDetails.floor.name} / {editUnitDetails.unit.number} ({editUnitDetails.unit.type}, KES {editUnitDetails.unit.rent.toLocaleString()})</span>
+                    ) : (
+                      <span className="text-gray-400">No unit selected</span>
+                    )}
+                  </Listbox.Button>
+                  <Listbox.Options className="absolute z-10 mt-1 w-full bg-white border border-green-100 rounded-lg shadow-lg max-h-60 overflow-auto focus:outline-none">
+                    {reassignOptions.length === 0 ? (
+                      <div className="px-4 py-2 text-sm text-gray-500">No available units to assign.</div>
+                    ) : (
+                      reassignOptions.map(opt => (
+                        <Listbox.Option
+                          key={opt.value}
+                          value={opt.value}
+                          className={({ active, selected }) => `px-3 py-2 cursor-pointer ${active ? 'bg-green-100' : ''} ${selected ? 'font-bold' : ''}`}
+                        >
+                          {opt.label}
+                        </Listbox.Option>
+                      ))
+                    )}
+                  </Listbox.Options>
+                </div>
+              </Listbox>
+              <p className="text-xs text-gray-500 mt-1">Select a vacant unit to move the tenant or keep the current unit selected.</p>
+            </div>
+            {editUnitDetails && (
               <>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Property</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editTenant.property.split(' ').slice(0, -1).join(' ')} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editUnitDetails.property.name} readOnly />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Unit</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editTenant.property.split(' ').slice(-1)[0]} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editUnitDetails.unit.number} readOnly />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold mb-1">Rent (KES)</label>
-                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editTenant.rent.toLocaleString()} readOnly />
+                  <input className="w-full border rounded-lg px-3 py-2 bg-gray-100" value={editUnitDetails.unit.rent.toLocaleString()} readOnly />
                 </div>
               </>
             )}
@@ -748,6 +740,7 @@ export const Tenants = () => {
       {/* Delete Tenant Modal */}
       <Modal open={!!deleteTenant} onClose={() => setDeleteTenant(null)} title="Delete Tenant?">
         <div className="mb-4">Are you sure you want to delete this tenant? This action cannot be undone.</div>
+        {deleteError && <div className="mb-3 text-sm text-red-600">{deleteError}</div>}
         <div className="flex justify-end gap-2">
           <button onClick={() => setDeleteTenant(null)} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200">Cancel</button>
           <button onClick={handleDelete} className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Delete</button>

@@ -86,24 +86,63 @@ router.post('/', requireAuth, async (req, res) => {
 // PATCH /api/tenants/:id - update tenant details
 router.patch('/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const { name, phone, email, moveInDate, leaseEnd, status } = req.body;
+  const { name, phone, email, moveInDate, leaseEnd, status, unitId } = req.body as {
+    name?: string; phone?: string; email?: string; moveInDate?: string; leaseEnd?: string; status?: string; unitId?: number;
+  };
   if (!id) return res.status(400).json({ message: 'Invalid tenant id' });
   try {
+    const existing = await prisma.tenant.findUnique({ where: { id }, select: { unitId: true } });
+    if (!existing) return res.status(404).json({ message: 'Tenant not found' });
+    const data: any = {
+      name,
+      phone,
+      email,
+      moveInDate: moveInDate ? new Date(moveInDate) : undefined,
+      leaseEnd: leaseEnd ? new Date(leaseEnd) : undefined,
+      status,
+    };
+    const desiredUnitId = typeof unitId === 'number' ? unitId : undefined;
+    if (desiredUnitId !== undefined && desiredUnitId !== existing.unitId) {
+      const targetUnit = await prisma.unit.findUnique({ where: { id: desiredUnitId } });
+      if (!targetUnit) return res.status(404).json({ message: 'Target unit not found' });
+      if (targetUnit.status !== 'vacant') return res.status(400).json({ message: 'Target unit is not vacant' });
+      if (existing.unitId) {
+        await prisma.unit.update({ where: { id: existing.unitId }, data: { status: 'vacant' } });
+      }
+      await prisma.unit.update({ where: { id: desiredUnitId }, data: { status: 'occupied' } });
+      data.unit = { connect: { id: desiredUnitId } };
+    }
     const updated = await prisma.tenant.update({
       where: { id },
-      data: {
-        name,
-        phone,
-        email,
-        moveInDate: moveInDate ? new Date(moveInDate) : undefined,
-        leaseEnd: leaseEnd ? new Date(leaseEnd) : undefined,
-        status,
-      },
+      data,
       include: { unit: { include: { floor: { include: { property: true } } } } },
     });
     res.json({ tenant: updated });
   } catch (e: any) {
-    res.status(400).json({ message: 'Could not update tenant' });
+    console.error(`Failed to update tenant ${id}`, e);
+    res.status(400).json({ message: e?.message || 'Could not update tenant' });
+  }
+});
+
+router.delete('/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ message: 'Invalid tenant id' });
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { id }, select: { unitId: true, userId: true } });
+    if (!tenant) return res.status(404).json({ message: 'Tenant not found' });
+    await prisma.payment.deleteMany({ where: { tenantId: id } });
+    await prisma.maintenanceRequest.updateMany({ where: { tenantId: id }, data: { tenantId: null } });
+    if (tenant.unitId) {
+      await prisma.unit.update({ where: { id: tenant.unitId }, data: { status: 'vacant' } });
+    }
+    await prisma.tenant.delete({ where: { id } });
+    if (tenant.userId) {
+      await prisma.user.delete({ where: { id: tenant.userId } }).catch(() => undefined);
+    }
+    res.status(204).end();
+  } catch (e: any) {
+    console.error(`Failed to delete tenant ${id}`, e);
+    res.status(400).json({ message: e?.message || 'Could not delete tenant' });
   }
 });
 
