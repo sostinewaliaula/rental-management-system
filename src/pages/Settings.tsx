@@ -44,7 +44,6 @@ const Modal: React.FC<ModalProps> = ({ open, onClose, title, children }) => {
     }
   };
   if (!open) return null;
-  const avatarPreview = profileEdit ? profileDraft.avatar || profile.avatar : profile.avatar;
 
   return (
     <div
@@ -95,6 +94,8 @@ export const Settings = () => {
   const [passwordDraft, setPasswordDraft] = useState({ current: '', new: '', confirm: '' });
   const [twoFA, setTwoFA] = useState(false);
   const [savingTwoFA, setSavingTwoFA] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // Notifications state
   const [notifications, setNotifications] = useState<NotificationPrefs>(notificationDefaults);
@@ -303,6 +304,25 @@ export const Settings = () => {
     } finally {
       setSavingTwoFA(false);
     }
+  };
+  const validatePasswordDraft = () => {
+    if (!passwordDraft.current || !passwordDraft.new || !passwordDraft.confirm) {
+      setPasswordError('Please fill in all password fields.');
+      return false;
+    }
+    if (passwordDraft.new.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
+      return false;
+    }
+    if (passwordDraft.new !== passwordDraft.confirm) {
+      setPasswordError('New password and confirmation do not match.');
+      return false;
+    }
+    if (passwordDraft.new === passwordDraft.current) {
+      setPasswordError('New password must be different from the current password.');
+      return false;
+    }
+    return true;
   };
 
   // Summary stats
@@ -604,38 +624,80 @@ export const Settings = () => {
       </div>
       {/* Modals */}
       <Modal open={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Change Password">
-        <form className="flex flex-col gap-4" onSubmit={async (e) => {
-          e.preventDefault();
-          if (!passwordDraft.new || passwordDraft.new !== passwordDraft.confirm) return;
-          try {
-            const res = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ currentPassword: passwordDraft.current, newPassword: passwordDraft.new }) });
-            const data = await res.json();
-            if (!res.ok) {
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setPasswordError(null);
+            if (!validatePasswordDraft()) return;
+            setChangingPassword(true);
+            try {
+              const res = await fetch('/api/auth/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ currentPassword: passwordDraft.current, newPassword: passwordDraft.new }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                clearStatusMessage();
+                setPasswordError(data?.message || 'Failed to change password.');
+                return;
+              }
+              setShowPasswordModal(false);
+              setPasswordDraft({ current: '', new: '', confirm: '' });
+              showStatusMessage('Password updated successfully.');
+            } catch {
               clearStatusMessage();
-              setErrorMessage(data?.message || 'Failed to change password.');
-              return;
+              setPasswordError('Unable to update password right now.');
+            } finally {
+              setChangingPassword(false);
             }
-            setShowPasswordModal(false);
-            setPasswordDraft({ current: '', new: '', confirm: '' });
-            showStatusMessage('Password updated successfully.');
-          } catch {
-            clearStatusMessage();
-            setErrorMessage('Unable to update password right now.');
-          }
-        }}>
+          }}
+        >
+          {passwordError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {passwordError}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-            <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={passwordDraft.current} onChange={e => setPasswordDraft({ ...passwordDraft, current: e.target.value })} />
+            <input
+              type="password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              value={passwordDraft.current}
+              onChange={e => setPasswordDraft({ ...passwordDraft, current: e.target.value })}
+              required
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-            <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={passwordDraft.new} onChange={e => setPasswordDraft({ ...passwordDraft, new: e.target.value })} />
+            <input
+              type="password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              value={passwordDraft.new}
+              onChange={e => setPasswordDraft({ ...passwordDraft, new: e.target.value })}
+              minLength={8}
+              required
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-            <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" value={passwordDraft.confirm} onChange={e => setPasswordDraft({ ...passwordDraft, confirm: e.target.value })} />
+            <input
+              type="password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              value={passwordDraft.confirm}
+              onChange={e => setPasswordDraft({ ...passwordDraft, confirm: e.target.value })}
+              minLength={8}
+              required
+            />
           </div>
-          <button type="submit" className="bg-blue-700 hover:bg-blue-800 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2"><KeyIcon size={16} /> Change Password</button>
+          <button
+            type="submit"
+            className={`bg-blue-700 text-white py-2 px-4 rounded-lg flex items-center justify-center gap-2 ${changingPassword ? 'opacity-75 cursor-not-allowed' : 'hover:bg-blue-800'}`}
+            disabled={changingPassword}
+          >
+            <KeyIcon size={16} /> {changingPassword ? 'Updating...' : 'Change Password'}
+          </button>
         </form>
       </Modal>
       <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete Account?">
